@@ -1,0 +1,37 @@
+{
+  "name": "@myworkouts/shared",
+  "version": "0.0.1",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./types": {
+      "types": "./dist/types/index.d.ts",
+      "default": "./dist/types/index.js"
+    },
+    "./voice": {
+      "types": "./dist/voice/index.d.ts",
+      "default": "./dist/voice/index.js"
+    },
+    "./workout": {
+      "types": "./dist/workout/index.d.ts",
+      "default": "./dist/workout/index.js"
+    },
+    "./body-map": {
+      "types": "./dist/body-map/index.d.ts",
+      "default": "./dist/body-map/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3"
+  }
+}
