@@ -27,8 +27,14 @@ export default function RootLayout({
               <Link href="/" className="text-sm text-gray-600 hover:text-gray-900">
                 Dashboard
               </Link>
+              <Link href="/clients" className="text-sm text-gray-600 hover:text-gray-900">
+                Clients
+              </Link>
               <Link href="/plans" className="text-sm text-gray-600 hover:text-gray-900">
                 Plans
+              </Link>
+              <Link href="/settings" className="text-sm text-gray-600 hover:text-gray-900">
+                Settings
               </Link>
             </div>
           </div>

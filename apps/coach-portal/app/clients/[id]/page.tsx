@@ -67,38 +67,40 @@ export default function ClientDetailPage() {
         .limit(20);
 
       if (sessionsData && sessionsData.length > 0) {
-        const workoutIds = [...new Set(sessionsData.map((s) => s.workout_id))];
+        const sessions = sessionsData as any[];
+        const workoutIds = [...new Set(sessions.map((s) => s.workout_id))];
         const { data: workouts } = await supabase
           .from('workouts')
           .select('id, title')
           .in('id', workoutIds);
 
-        const workoutMap = new Map(workouts?.map((w) => [w.id, w.title]) ?? []);
+        const workoutMap = new Map((workouts as any[] ?? []).map((w: any) => [w.id, w.title]));
         setSessions(
-          sessionsData.map((s) => ({
+          sessions.map((s: any) => ({
             ...s,
             workout_title: workoutMap.get(s.workout_id) ?? 'Unknown Workout',
           })),
         );
 
         // Fetch form recordings for these sessions
-        const sessionIds = sessionsData.map((s) => s.id);
+        const sessionIds = sessions.map((s: any) => s.id);
         const { data: recs } = await supabase
           .from('form_recordings')
           .select('id, session_id, video_url, exercise_id, timestamp_start, timestamp_end, coach_feedback, created_at')
           .in('session_id', sessionIds)
           .order('created_at', { ascending: false });
 
-        if (recs && recs.length > 0) {
-          const exerciseIds = [...new Set(recs.map((r) => r.exercise_id))];
+        if (recs && (recs as any[]).length > 0) {
+          const recsArr = recs as any[];
+          const exerciseIds = [...new Set(recsArr.map((r: any) => r.exercise_id))];
           const { data: exercises } = await supabase
             .from('exercises')
             .select('id, name')
             .in('id', exerciseIds);
 
-          const exerciseMap = new Map(exercises?.map((e) => [e.id, e.name]) ?? []);
+          const exerciseMap = new Map((exercises as any[] ?? []).map((e: any) => [e.id, e.name]));
           setRecordings(
-            recs.map((r) => ({
+            recsArr.map((r: any) => ({
               ...r,
               exercise_name: exerciseMap.get(r.exercise_id) ?? 'Unknown Exercise',
               coach_feedback: (r.coach_feedback ?? []) as RecordingRow['coach_feedback'],
@@ -132,7 +134,7 @@ export default function ClientDetailPage() {
 
     const updatedFeedback = [...recording.coach_feedback, newFeedback];
 
-    await supabase
+    await (supabase as any)
       .from('form_recordings')
       .update({ coach_feedback: updatedFeedback })
       .eq('id', recordingId);

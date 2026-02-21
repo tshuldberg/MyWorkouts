@@ -40,7 +40,7 @@ export default function ClientsPage() {
 
       // Enrich with session data
       const enriched: ClientRow[] = await Promise.all(
-        users.map(async (u) => {
+        (users as any[]).map(async (u: any) => {
           const { data: sessions } = await supabase
             .from('workout_sessions')
             .select('started_at')
@@ -54,8 +54,8 @@ export default function ClientsPage() {
             .eq('user_id', u.id);
 
           // Check if following a plan
-          const { data: planSub } = await supabase
-            .from('plan_subscriptions' as string)
+          const { data: planSub } = await (supabase as any)
+            .from('plan_subscriptions')
             .select('plan_id')
             .eq('user_id', u.id)
             .limit(1);
@@ -67,12 +67,12 @@ export default function ClientsPage() {
               .select('title')
               .eq('id', (planSub[0] as { plan_id: string }).plan_id)
               .single();
-            planTitle = plan?.title ?? null;
+            planTitle = (plan as any)?.title ?? null;
           }
 
           return {
             ...u,
-            last_workout: sessions?.[0]?.started_at ?? null,
+            last_workout: (sessions as any)?.[0]?.started_at ?? null,
             total_sessions: count ?? 0,
             plan_title: planTitle,
           };
