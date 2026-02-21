@@ -28,6 +28,14 @@
     "./body-map": {
       "types": "./dist/body-map/index.d.ts",
       "default": "./dist/body-map/index.js"
+    },
+    "./exercise": {
+      "types": "./dist/exercise/index.d.ts",
+      "default": "./dist/exercise/index.js"
+    },
+    "./subscription": {
+      "types": "./dist/subscription/index.d.ts",
+      "default": "./dist/subscription/index.js"
     }
   },
   "scripts": {

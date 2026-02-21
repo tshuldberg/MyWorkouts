@@ -24,6 +24,85 @@ export const MUSCLE_GROUPS: MuscleGroupDefinition[] = [
   { id: MuscleGroup.FullBody, label: 'Full Body', region: 'core', side: 'both' },
 ];
 
+// ── Body Map Library Slug Mappings ──
+// Maps react-native-body-highlighter / react-body-highlighter slugs
+// to our MuscleGroup enum.
+
+export const SLUG_TO_MUSCLE_GROUP: Record<string, MuscleGroup> = {
+  'chest': MuscleGroup.Chest,
+  'upper-back': MuscleGroup.Back,
+  'lower-back': MuscleGroup.Back,
+  'deltoids': MuscleGroup.Shoulders,
+  'biceps': MuscleGroup.Biceps,
+  'triceps': MuscleGroup.Triceps,
+  'forearm': MuscleGroup.Forearms,
+  'abs': MuscleGroup.Core,
+  'obliques': MuscleGroup.Core,
+  'quadriceps': MuscleGroup.Quads,
+  'hamstring': MuscleGroup.Hamstrings,
+  'gluteal': MuscleGroup.Glutes,
+  'calves': MuscleGroup.Calves,
+  'adductors': MuscleGroup.HipFlexors,
+  'neck': MuscleGroup.Neck,
+};
+
+export const MUSCLE_GROUP_TO_SLUGS: Record<MuscleGroup, string[]> = {
+  [MuscleGroup.Chest]: ['chest'],
+  [MuscleGroup.Back]: ['upper-back', 'lower-back'],
+  [MuscleGroup.Shoulders]: ['deltoids'],
+  [MuscleGroup.Biceps]: ['biceps'],
+  [MuscleGroup.Triceps]: ['triceps'],
+  [MuscleGroup.Forearms]: ['forearm'],
+  [MuscleGroup.Core]: ['abs', 'obliques'],
+  [MuscleGroup.Quads]: ['quadriceps'],
+  [MuscleGroup.Hamstrings]: ['hamstring'],
+  [MuscleGroup.Glutes]: ['gluteal'],
+  [MuscleGroup.Calves]: ['calves'],
+  [MuscleGroup.HipFlexors]: ['adductors'],
+  [MuscleGroup.Neck]: ['neck'],
+  [MuscleGroup.FullBody]: [
+    'chest', 'upper-back', 'lower-back', 'deltoids', 'biceps', 'triceps',
+    'forearm', 'abs', 'obliques', 'quadriceps', 'hamstring', 'gluteal',
+    'calves', 'adductors', 'neck',
+  ],
+};
+
+export function slugToMuscleGroup(slug: string): MuscleGroup | undefined {
+  return SLUG_TO_MUSCLE_GROUP[slug];
+}
+
+export function muscleGroupToSlugs(group: MuscleGroup): string[] {
+  return MUSCLE_GROUP_TO_SLUGS[group] ?? [];
+}
+
+export function muscleGroupLabel(group: MuscleGroup): string {
+  return MUSCLE_GROUPS.find((g) => g.id === group)?.label ?? group;
+}
+
+// ── Body Map Highlight Data Builder ──
+// Converts selected MuscleGroup[] into the data array expected by the body-highlighter libs.
+
+export interface BodyHighlightDatum {
+  slug: string;
+  intensity: number;
+  color?: string;
+}
+
+export function buildHighlightData(
+  selectedGroups: MuscleGroup[],
+  color = '#6366F1',
+): BodyHighlightDatum[] {
+  const data: BodyHighlightDatum[] = [];
+  for (const group of selectedGroups) {
+    for (const slug of muscleGroupToSlugs(group)) {
+      data.push({ slug, intensity: 2, color });
+    }
+  }
+  return data;
+}
+
+// ── Exercise Muscle Mapping (kept for backward compat) ──
+
 export interface ExerciseMuscleMapping {
   exerciseName: string;
   primary: MuscleGroup[];
