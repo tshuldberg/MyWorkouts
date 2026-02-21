@@ -5,12 +5,14 @@ import { useParams, useRouter } from 'next/navigation';
 import {
   type Exercise,
   type Workout,
+  type VoiceCommand,
   playerProgress,
   formatTime,
   SPEED_OPTIONS,
 } from '@myworkouts/shared';
 import { usePlayerStore } from '@/lib/player-store';
 import { createClient } from '@/lib/supabase/client';
+import { createWebSpeechAdapter, type SpeechRecognitionAdapter } from '@/lib/speech-recognition';
 
 export default function WorkoutPlayerPage() {
   const { id } = useParams<{ id: string }>();
@@ -22,6 +24,13 @@ export default function WorkoutPlayerPage() {
   const [workout, setWorkout] = useState<Workout | null>(null);
   const [exerciseMap, setExerciseMap] = useState<Record<string, Exercise>>({});
   const [loading, setLoading] = useState(true);
+
+  // Voice control state
+  const [voiceEnabled, setVoiceEnabled] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [lastTranscript, setLastTranscript] = useState('');
+  const [voiceCommandLog, setVoiceCommandLog] = useState<Array<{ command: string; time: number }>>([]);
+  const speechRef = useRef<SpeechRecognitionAdapter | null>(null);
 
   // Load workout and its exercises
   useEffect(() => {
@@ -90,6 +99,77 @@ export default function WorkoutPlayerPage() {
     };
   }, [status.state, dispatch]);
 
+  // Voice command handler
+  const handleVoiceCommand = useCallback(
+    (command: VoiceCommand) => {
+      const time = Date.now();
+      setVoiceCommandLog((prev) => [...prev.slice(-9), { command: command.action, time }]);
+
+      switch (command.action) {
+        case 'pause':
+          dispatch({ type: 'PAUSE' });
+          break;
+        case 'resume':
+          if (status.state === 'idle') dispatch({ type: 'START' });
+          else dispatch({ type: 'RESUME' });
+          break;
+        case 'slower':
+          dispatch({ type: 'ADJUST_SPEED', direction: 'slower' });
+          break;
+        case 'faster':
+          dispatch({ type: 'ADJUST_SPEED', direction: 'faster' });
+          break;
+        case 'normal':
+          dispatch({ type: 'ADJUST_SPEED', direction: 'normal' });
+          break;
+        case 'next':
+          dispatch({ type: 'SKIP_EXERCISE' });
+          break;
+        case 'previous':
+        case 'repeat':
+          dispatch({ type: 'PREVIOUS_EXERCISE' });
+          break;
+      }
+    },
+    [dispatch, status.state],
+  );
+
+  // Voice recognition lifecycle
+  useEffect(() => {
+    if (!voiceEnabled) {
+      speechRef.current?.stop();
+      speechRef.current = null;
+      setIsListening(false);
+      return;
+    }
+
+    const adapter = createWebSpeechAdapter({
+      onCommand: handleVoiceCommand,
+      onListeningChange: setIsListening,
+      onTranscript: setLastTranscript,
+    });
+
+    if (!adapter) {
+      setVoiceEnabled(false);
+      return;
+    }
+
+    speechRef.current = adapter;
+    adapter.start();
+
+    return () => {
+      adapter.stop();
+      speechRef.current = null;
+    };
+  }, [voiceEnabled, handleVoiceCommand]);
+
+  // Stop voice when workout completes
+  useEffect(() => {
+    if (status.state === 'completed') {
+      setVoiceEnabled(false);
+    }
+  }, [status.state]);
+
   // Save session on completion
   useEffect(() => {
     if (status.state !== 'completed' || !workout) return;
@@ -100,6 +180,11 @@ export default function WorkoutPlayerPage() {
         user_id: user.id,
         workout_id: workout.id,
         exercises_completed: status.completed,
+        voice_commands_used: voiceCommandLog.map((c) => ({
+          command: c.command,
+          timestamp: c.time,
+          recognized: true,
+        })),
         completed_at: new Date().toISOString(),
       });
     });
@@ -189,8 +274,36 @@ export default function WorkoutPlayerPage() {
           &#x25C0; Exit
         </button>
         <h2 className="font-semibold text-gray-900 truncate mx-4">{workout.title}</h2>
-        <span className="text-sm text-gray-400">{formatTime(status.elapsedTime)}</span>
+        <div className="flex items-center gap-2">
+          {/* Voice Toggle */}
+          <button
+            type="button"
+            onClick={() => setVoiceEnabled((v) => !v)}
+            className={`relative rounded-full p-2 transition-colors ${
+              voiceEnabled
+                ? 'bg-red-100 text-red-600'
+                : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
+            }`}
+            title={voiceEnabled ? 'Voice on (click to mute)' : 'Enable voice commands'}
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
+            </svg>
+            {isListening && (
+              <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-red-500 animate-pulse" />
+            )}
+          </button>
+          <span className="text-sm text-gray-400">{formatTime(status.elapsedTime)}</span>
+        </div>
       </div>
+
+      {/* Voice Feedback */}
+      {voiceEnabled && lastTranscript && (
+        <div className="mb-2 rounded-lg bg-gray-50 px-3 py-1.5 text-xs text-gray-500">
+          <span className="text-red-400 mr-1">&#9679;</span>
+          Heard: &ldquo;{lastTranscript}&rdquo;
+        </div>
+      )}
 
       {/* Progress Bar */}
       <div className="mb-6">
