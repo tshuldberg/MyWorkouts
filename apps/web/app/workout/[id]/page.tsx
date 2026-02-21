@@ -11,8 +11,11 @@ import {
   SPEED_OPTIONS,
 } from '@myworkouts/shared';
 import { usePlayerStore } from '@/lib/player-store';
+import { useSubscriptionStore } from '@/lib/subscription-store';
 import { createClient } from '@/lib/supabase/client';
 import { createWebSpeechAdapter, type SpeechRecognitionAdapter } from '@/lib/speech-recognition';
+import { createCameraRecorder, type CameraRecorderAdapter } from '@/lib/camera-recorder';
+import { uploadRecording } from '@/lib/recording-upload';
 
 export default function WorkoutPlayerPage() {
   const { id } = useParams<{ id: string }>();
@@ -31,6 +34,16 @@ export default function WorkoutPlayerPage() {
   const [lastTranscript, setLastTranscript] = useState('');
   const [voiceCommandLog, setVoiceCommandLog] = useState<Array<{ command: string; time: number }>>([]);
   const speechRef = useRef<SpeechRecognitionAdapter | null>(null);
+
+  // Recording state (Premium only)
+  const isPremium = useSubscriptionStore((s) => s.isPremium());
+  const [cameraEnabled, setCameraEnabled] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingStartTime, setRecordingStartTime] = useState(0);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [uploadingCount, setUploadingCount] = useState(0);
+  const cameraRef = useRef<CameraRecorderAdapter | null>(null);
+  const previewVideoRef = useRef<HTMLVideoElement | null>(null);
 
   // Load workout and its exercises
   useEffect(() => {
@@ -76,6 +89,111 @@ export default function WorkoutPlayerPage() {
       if (tickRef.current) clearInterval(tickRef.current);
     };
   }, [id, init]);
+
+  // Load subscription status
+  const subStore = useSubscriptionStore();
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) {
+        subStore.setLoading(false);
+        return;
+      }
+      (supabase as any)
+        .from('subscriptions')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('status', 'active')
+        .single()
+        .then(({ data }: { data: any }) => {
+          if (data) {
+            subStore.setPlan(data.plan);
+            subStore.setStatus(data.status);
+            subStore.setExpiresAt(data.expires_at);
+          }
+          subStore.setLoading(false);
+        });
+    });
+  }, []);
+
+  // Camera lifecycle
+  useEffect(() => {
+    if (!cameraEnabled) {
+      cameraRef.current?.destroy();
+      cameraRef.current = null;
+      setIsRecording(false);
+      return;
+    }
+
+    const adapter = createCameraRecorder({
+      onError: (err) => {
+        console.warn('Camera error:', err);
+        setCameraEnabled(false);
+      },
+    });
+
+    if (!adapter) {
+      setCameraEnabled(false);
+      return;
+    }
+
+    cameraRef.current = adapter;
+    adapter.startPreview().then(() => {
+      if (previewVideoRef.current) {
+        adapter.attachPreview(previewVideoRef.current);
+      }
+    });
+
+    return () => {
+      adapter.destroy();
+      cameraRef.current = null;
+    };
+  }, [cameraEnabled]);
+
+  // Derived state (needed by toggleRecording and render)
+  const currentExercise = status.exercises[status.currentExerciseIndex];
+  const currentDetail = currentExercise ? exerciseMap[currentExercise.exercise_id] : null;
+  const progress = playerProgress(status);
+
+  // Toggle recording
+  const toggleRecording = useCallback(async () => {
+    if (!cameraRef.current) return;
+
+    if (isRecording) {
+      // Stop recording and upload
+      const blob = await cameraRef.current.stopRecording();
+      setIsRecording(false);
+
+      if (!sessionId || !currentExercise) return;
+
+      setUploadingCount((c) => c + 1);
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        await uploadRecording(
+          blob,
+          user.id,
+          sessionId,
+          currentExercise.exercise_id,
+          recordingStartTime,
+          status.elapsedTime,
+        );
+      }
+      setUploadingCount((c) => c - 1);
+    } else {
+      // Start recording
+      cameraRef.current.startRecording();
+      setIsRecording(true);
+      setRecordingStartTime(status.elapsedTime);
+    }
+  }, [isRecording, sessionId, currentExercise, status.elapsedTime, recordingStartTime]);
+
+  // Stop camera on workout complete
+  useEffect(() => {
+    if (status.state === 'completed') {
+      setCameraEnabled(false);
+    }
+  }, [status.state]);
 
   // Tick loop: runs when state is 'playing' or 'rest'
   useEffect(() => {
@@ -130,6 +248,15 @@ export default function WorkoutPlayerPage() {
           dispatch({ type: 'PREVIOUS_EXERCISE' });
           break;
       }
+
+      // Recording voice commands
+      if (command.category === 'recording' && isPremium && cameraEnabled) {
+        if (command.action === 'start' && !isRecording) {
+          toggleRecording();
+        } else if (command.action === 'stop' && isRecording) {
+          toggleRecording();
+        }
+      }
     },
     [dispatch, status.state],
   );
@@ -170,15 +297,33 @@ export default function WorkoutPlayerPage() {
     }
   }, [status.state]);
 
-  // Save session on completion
+  // Create session at start so recordings can reference it
   useEffect(() => {
-    if (status.state !== 'completed' || !workout) return;
+    if (status.state !== 'playing' || sessionId || !workout) return;
     const supabase = createClient();
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (!user) return;
-      (supabase as any).from('workout_sessions').insert({
-        user_id: user.id,
-        workout_id: workout.id,
+      (supabase as any)
+        .from('workout_sessions')
+        .insert({
+          user_id: user.id,
+          workout_id: workout.id,
+        })
+        .select('id')
+        .single()
+        .then(({ data }: { data: any }) => {
+          if (data) setSessionId(data.id);
+        });
+    });
+  }, [status.state, sessionId, workout]);
+
+  // Update session on completion
+  useEffect(() => {
+    if (status.state !== 'completed' || !sessionId) return;
+    const supabase = createClient();
+    (supabase as any)
+      .from('workout_sessions')
+      .update({
         exercises_completed: status.completed,
         voice_commands_used: voiceCommandLog.map((c) => ({
           command: c.command,
@@ -186,13 +331,9 @@ export default function WorkoutPlayerPage() {
           recognized: true,
         })),
         completed_at: new Date().toISOString(),
-      });
-    });
-  }, [status.state, workout, status.completed]);
-
-  const currentExercise = status.exercises[status.currentExerciseIndex];
-  const currentDetail = currentExercise ? exerciseMap[currentExercise.exercise_id] : null;
-  const progress = playerProgress(status);
+      })
+      .eq('id', sessionId);
+  }, [status.state, sessionId, status.completed]);
 
   const handlePlayPause = useCallback(() => {
     if (status.state === 'idle') dispatch({ type: 'START' });
@@ -250,13 +391,24 @@ export default function WorkoutPlayerPage() {
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => router.push('/workouts')}
-          className="mt-8 rounded-lg bg-indigo-500 px-8 py-3 font-semibold text-white hover:bg-indigo-600 transition-colors"
-        >
-          Done
-        </button>
+        <div className="mt-8 flex flex-col gap-3">
+          {sessionId && isPremium && (
+            <button
+              type="button"
+              onClick={() => router.push('/recordings')}
+              className="rounded-lg border border-indigo-300 px-8 py-3 font-semibold text-indigo-600 hover:bg-indigo-50 transition-colors"
+            >
+              Review Recordings
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => router.push('/workouts')}
+            className="rounded-lg bg-indigo-500 px-8 py-3 font-semibold text-white hover:bg-indigo-600 transition-colors"
+          >
+            Done
+          </button>
+        </div>
       </div>
     );
   }
@@ -293,9 +445,72 @@ export default function WorkoutPlayerPage() {
               <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-red-500 animate-pulse" />
             )}
           </button>
+          {/* Camera Toggle (Premium) */}
+          {isPremium && (
+            <button
+              type="button"
+              onClick={() => setCameraEnabled((v) => !v)}
+              className={`relative rounded-full p-2 transition-colors ${
+                cameraEnabled
+                  ? 'bg-amber-100 text-amber-600'
+                  : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
+              }`}
+              title={cameraEnabled ? 'Camera on (click to turn off)' : 'Enable form recording'}
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z" />
+              </svg>
+              {isRecording && (
+                <span className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-red-500 animate-pulse" />
+              )}
+            </button>
+          )}
           <span className="text-sm text-gray-400">{formatTime(status.elapsedTime)}</span>
         </div>
       </div>
+
+      {/* Camera PiP Overlay */}
+      {cameraEnabled && (
+        <div className="fixed bottom-36 right-4 z-40 w-40 rounded-xl overflow-hidden shadow-lg border-2 border-white/80">
+          <video
+            ref={previewVideoRef}
+            autoPlay
+            muted
+            playsInline
+            className="w-full h-auto -scale-x-100 bg-black"
+          />
+          <div className="absolute bottom-0 left-0 right-0 flex items-center justify-center gap-1 bg-black/50 py-1">
+            <button
+              type="button"
+              onClick={toggleRecording}
+              className={`rounded-full p-1.5 transition-colors ${
+                isRecording
+                  ? 'bg-red-500 text-white'
+                  : 'bg-white/90 text-gray-700 hover:bg-white'
+              }`}
+              title={isRecording ? 'Stop recording' : 'Start recording'}
+            >
+              {isRecording ? (
+                <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 24 24">
+                  <rect x="6" y="6" width="12" height="12" rx="1" />
+                </svg>
+              ) : (
+                <svg className="h-3.5 w-3.5" fill="currentColor" viewBox="0 0 24 24">
+                  <circle cx="12" cy="12" r="8" />
+                </svg>
+              )}
+            </button>
+            {isRecording && (
+              <span className="text-xs text-red-300 font-mono">REC</span>
+            )}
+          </div>
+          {uploadingCount > 0 && (
+            <div className="absolute top-1 left-1 rounded-full bg-blue-500 px-1.5 py-0.5 text-[10px] text-white">
+              Uploading...
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Voice Feedback */}
       {voiceEnabled && lastTranscript && (
