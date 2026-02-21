@@ -28,6 +28,9 @@ async function Nav() {
           <Link href="/workouts" className="text-sm text-gray-600 hover:text-gray-900">
             Workouts
           </Link>
+          <Link href="/progress" className="text-sm text-gray-600 hover:text-gray-900">
+            Progress
+          </Link>
           {user ? (
             <Link href="/profile" className="text-sm text-gray-600 hover:text-gray-900">
               Profile

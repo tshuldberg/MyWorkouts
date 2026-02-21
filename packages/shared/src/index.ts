@@ -6,4 +6,5 @@ export * from './body-map/index.js';
 export * from './exercise/index.js';
 export * from './subscription/index.js';
 export * from './plan/index.js';
+export * from './progress/index.js';
 export * from './utils/index.js';

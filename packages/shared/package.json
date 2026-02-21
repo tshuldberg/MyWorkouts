@@ -40,6 +40,10 @@
     "./plan": {
       "types": "./dist/plan/index.d.ts",
       "default": "./dist/plan/index.js"
+    },
+    "./progress": {
+      "types": "./dist/progress/index.d.ts",
+      "default": "./dist/progress/index.js"
     }
   },
   "scripts": {
