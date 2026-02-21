@@ -1,9 +1,10 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
   ScrollView,
   TouchableOpacity,
+  Alert,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
@@ -11,6 +12,8 @@ import {
   type Workout,
   DAY_NAMES,
   getPlanProgress,
+  getCurrentPlanPosition,
+  SubscriptionPlan,
 } from '@myworkouts/shared';
 import { supabase } from '../../lib/supabase';
 
@@ -20,9 +23,39 @@ export default function PlanDetailScreen() {
   const [plan, setPlan] = useState<WorkoutPlan | null>(null);
   const [workoutNames, setWorkoutNames] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
+  const [following, setFollowing] = useState(false);
+  const [followStartDate, setFollowStartDate] = useState<string | null>(null);
+  const [isPremiumUser, setIsPremiumUser] = useState(false);
+  const [followSaving, setFollowSaving] = useState(false);
 
   useEffect(() => {
     (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+
+      if (user) {
+        // Check subscription
+        const { data: profile } = await (supabase as any)
+          .from('users')
+          .select('subscription_tier')
+          .eq('id', user.id)
+          .single();
+        if ((profile as any)?.subscription_tier === SubscriptionPlan.Premium) {
+          setIsPremiumUser(true);
+        }
+
+        // Check if following
+        const { data: sub } = await (supabase as any)
+          .from('plan_subscriptions')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('plan_id', id)
+          .maybeSingle();
+        if (sub) {
+          setFollowing(true);
+          setFollowStartDate((sub as any).started_at);
+        }
+      }
+
       const { data } = await supabase
         .from('workout_plans')
         .select('*')
@@ -58,8 +91,64 @@ export default function PlanDetailScreen() {
 
   const progress = useMemo(
     () => plan ? getPlanProgress(plan, new Set()) : { completed: 0, total: 0, percent: 0 },
-    [plan]
+    [plan],
   );
+
+  const planPosition = useMemo(() => {
+    if (!plan || !followStartDate) return null;
+    return getCurrentPlanPosition(plan, followStartDate);
+  }, [plan, followStartDate]);
+
+  const handleFollowPlan = useCallback(async () => {
+    if (plan?.is_premium && !isPremiumUser) {
+      router.push('/subscription' as any);
+      return;
+    }
+
+    setFollowSaving(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      setFollowSaving(false);
+      return;
+    }
+
+    const startDate = new Date().toISOString();
+    await (supabase as any).from('plan_subscriptions').insert({
+      user_id: user.id,
+      plan_id: id,
+      started_at: startDate,
+    });
+
+    setFollowing(true);
+    setFollowStartDate(startDate);
+    setFollowSaving(false);
+  }, [id, plan, isPremiumUser, router]);
+
+  const handleUnfollow = useCallback(async () => {
+    Alert.alert('Unfollow Plan', 'Stop following this plan?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Unfollow',
+        style: 'destructive',
+        onPress: async () => {
+          setFollowSaving(true);
+          const { data: { user } } = await supabase.auth.getUser();
+          if (!user) {
+            setFollowSaving(false);
+            return;
+          }
+          await (supabase as any)
+            .from('plan_subscriptions')
+            .delete()
+            .eq('user_id', user.id)
+            .eq('plan_id', id);
+          setFollowing(false);
+          setFollowStartDate(null);
+          setFollowSaving(false);
+        },
+      },
+    ]);
+  }, [id]);
 
   if (loading) {
     return (
@@ -105,6 +194,47 @@ export default function PlanDetailScreen() {
         </Text>
       </View>
 
+      {/* Follow / Unfollow */}
+      <View className="mx-4 mt-4">
+        {following ? (
+          <View className="flex-row items-center gap-3">
+            <View className="flex-1 rounded-lg bg-green-50 border border-green-200 px-4 py-2.5">
+              <Text className="text-sm font-medium text-green-700">Following</Text>
+              {planPosition && !planPosition.isComplete && (
+                <Text className="text-xs text-green-600 mt-0.5">
+                  Week {planPosition.weekNumber}, {DAY_NAMES[planPosition.dayIndex]}
+                </Text>
+              )}
+              {planPosition?.isComplete && (
+                <Text className="text-xs text-green-600 mt-0.5">Completed!</Text>
+              )}
+            </View>
+            <TouchableOpacity
+              onPress={handleUnfollow}
+              disabled={followSaving}
+              className="rounded-lg border border-gray-200 px-4 py-2.5"
+            >
+              <Text className="text-sm text-gray-600">Unfollow</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <TouchableOpacity
+            onPress={handleFollowPlan}
+            disabled={followSaving}
+            className="rounded-lg bg-indigo-500 py-3 items-center"
+            style={{ opacity: followSaving ? 0.5 : 1 }}
+          >
+            <Text className="font-semibold text-white">
+              {followSaving
+                ? 'Saving...'
+                : plan.is_premium && !isPremiumUser
+                  ? 'Upgrade to Premium to Follow'
+                  : 'Follow This Plan'}
+            </Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
       {/* Overall Progress */}
       <View className="mx-4 mt-4 rounded-xl border border-gray-200 bg-white p-4">
         <View className="flex-row items-center justify-between mb-2">
@@ -128,36 +258,50 @@ export default function PlanDetailScreen() {
           <Text className="text-lg font-semibold text-gray-900 mb-3">
             Week {week.week_number}
           </Text>
-          {week.days.map((day, di) => (
-            <View
-              key={di}
-              className={`mb-2 rounded-lg border p-3 ${
-                day.rest_day
-                  ? 'border-gray-100 bg-gray-50'
-                  : day.workout_id
-                    ? 'border-indigo-200 bg-indigo-50'
-                    : 'border-gray-200 bg-white'
-              }`}
-            >
-              <View className="flex-row items-center justify-between">
-                <Text className="text-xs font-medium text-gray-500">
-                  {DAY_NAMES[di]}
-                </Text>
-                {day.rest_day ? (
-                  <Text className="text-xs text-gray-400">Rest</Text>
-                ) : day.workout_id ? (
-                  <Text className="text-xs font-medium text-indigo-700">
-                    {workoutNames[day.workout_id] ?? 'Workout'}
-                  </Text>
-                ) : (
-                  <Text className="text-xs text-gray-300">--</Text>
+          {week.days.map((day, di) => {
+            const isCurrent = planPosition
+              && planPosition.weekNumber === week.week_number
+              && planPosition.dayIndex === di;
+            return (
+              <View
+                key={di}
+                className={`mb-2 rounded-lg border p-3 ${
+                  isCurrent
+                    ? 'border-indigo-500 bg-indigo-50'
+                    : day.rest_day
+                      ? 'border-gray-100 bg-gray-50'
+                      : day.workout_id
+                        ? 'border-indigo-200 bg-indigo-50'
+                        : 'border-gray-200 bg-white'
+                }`}
+              >
+                <View className="flex-row items-center justify-between">
+                  <View className="flex-row items-center gap-2">
+                    <Text className="text-xs font-medium text-gray-500">
+                      {DAY_NAMES[di]}
+                    </Text>
+                    {isCurrent && (
+                      <View className="rounded-full bg-indigo-500 px-2 py-0.5">
+                        <Text className="text-[10px] font-medium text-white">Today</Text>
+                      </View>
+                    )}
+                  </View>
+                  {day.rest_day ? (
+                    <Text className="text-xs text-gray-400">Rest</Text>
+                  ) : day.workout_id ? (
+                    <Text className="text-xs font-medium text-indigo-700">
+                      {workoutNames[day.workout_id] ?? 'Workout'}
+                    </Text>
+                  ) : (
+                    <Text className="text-xs text-gray-300">--</Text>
+                  )}
+                </View>
+                {day.notes && (
+                  <Text className="mt-1 text-xs text-gray-400">{day.notes}</Text>
                 )}
               </View>
-              {day.notes && (
-                <Text className="mt-1 text-xs text-gray-400">{day.notes}</Text>
-              )}
-            </View>
-          ))}
+            );
+          })}
         </View>
       ))}
     </ScrollView>

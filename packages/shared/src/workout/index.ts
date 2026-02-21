@@ -21,6 +21,17 @@ export {
   type PlayerAction,
 } from './engine.js';
 
+export {
+  createPlanConsumerStore,
+  getWeekSchedule,
+  getCurrentPlanPosition,
+  getTodaysWorkout,
+  getAllPlanWorkoutIds,
+  type PlanConsumerState,
+  type PlanConsumerActions,
+  type PlanConsumerStore,
+} from './plans.js';
+
 export type WorkoutPlayerState = 'idle' | 'playing' | 'paused' | 'rest' | 'completed';
 
 export interface WorkoutPlayerStatus {

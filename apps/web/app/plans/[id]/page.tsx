@@ -1,12 +1,15 @@
 'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
   type WorkoutPlan,
   type Workout,
+  type User,
   DAY_NAMES,
   getPlanProgress,
+  getCurrentPlanPosition,
+  SubscriptionPlan,
 } from '@myworkouts/shared';
 import { createClient } from '@/lib/supabase/client';
 
@@ -16,10 +19,40 @@ export default function PlanDetailPage() {
   const [plan, setPlan] = useState<WorkoutPlan | null>(null);
   const [workoutNames, setWorkoutNames] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
+  const [following, setFollowing] = useState(false);
+  const [followStartDate, setFollowStartDate] = useState<string | null>(null);
+  const [isPremiumUser, setIsPremiumUser] = useState(false);
+  const [followSaving, setFollowSaving] = useState(false);
 
   useEffect(() => {
     (async () => {
       const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+
+      // Check subscription tier
+      if (user) {
+        const { data: profile } = await (supabase as any)
+          .from('users')
+          .select('subscription_tier')
+          .eq('id', user.id)
+          .single();
+        if ((profile as any)?.subscription_tier === SubscriptionPlan.Premium) {
+          setIsPremiumUser(true);
+        }
+
+        // Check if user is already following this plan
+        const { data: sub } = await (supabase as any)
+          .from('plan_subscriptions')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('plan_id', id)
+          .maybeSingle();
+        if (sub) {
+          setFollowing(true);
+          setFollowStartDate((sub as any).started_at);
+        }
+      }
+
       const { data } = await supabase
         .from('workout_plans')
         .select('*')
@@ -53,6 +86,52 @@ export default function PlanDetailPage() {
       setLoading(false);
     })();
   }, [id]);
+
+  const handleFollowPlan = useCallback(async () => {
+    setFollowSaving(true);
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      setFollowSaving(false);
+      return;
+    }
+
+    const startDate = new Date().toISOString();
+    await (supabase as any).from('plan_subscriptions').insert({
+      user_id: user.id,
+      plan_id: id,
+      started_at: startDate,
+    });
+
+    setFollowing(true);
+    setFollowStartDate(startDate);
+    setFollowSaving(false);
+  }, [id]);
+
+  const handleUnfollow = useCallback(async () => {
+    setFollowSaving(true);
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      setFollowSaving(false);
+      return;
+    }
+
+    await (supabase as any)
+      .from('plan_subscriptions')
+      .delete()
+      .eq('user_id', user.id)
+      .eq('plan_id', id);
+
+    setFollowing(false);
+    setFollowStartDate(null);
+    setFollowSaving(false);
+  }, [id]);
+
+  const planPosition = useMemo(() => {
+    if (!plan || !followStartDate) return null;
+    return getCurrentPlanPosition(plan, followStartDate);
+  }, [plan, followStartDate]);
 
   const progress = useMemo(
     () => plan ? getPlanProgress(plan, new Set()) : { completed: 0, total: 0, percent: 0 },
@@ -109,6 +188,46 @@ export default function PlanDetailPage() {
       <p className="text-sm text-gray-500 mb-4">
         {plan.weeks.length} weeks{' \u00B7 '}{progress.total} workouts
       </p>
+
+      {/* Follow / Unfollow */}
+      <div className="mb-4">
+        {following ? (
+          <div className="flex items-center gap-3">
+            <div className="flex-1 rounded-lg bg-green-50 border border-green-200 px-4 py-2">
+              <span className="text-sm font-medium text-green-700">Following this plan</span>
+              {planPosition && !planPosition.isComplete && (
+                <span className="text-xs text-green-600 ml-2">
+                  Week {planPosition.weekNumber}, {DAY_NAMES[planPosition.dayIndex]}
+                </span>
+              )}
+              {planPosition?.isComplete && (
+                <span className="text-xs text-green-600 ml-2">Completed!</span>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={handleUnfollow}
+              disabled={followSaving}
+              className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-colors"
+            >
+              Unfollow
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={plan?.is_premium && !isPremiumUser ? () => router.push('/pricing') : handleFollowPlan}
+            disabled={followSaving}
+            className="w-full rounded-lg bg-indigo-500 py-3 font-semibold text-white hover:bg-indigo-600 disabled:opacity-50 transition-colors"
+          >
+            {followSaving
+              ? 'Saving...'
+              : plan?.is_premium && !isPremiumUser
+                ? 'Upgrade to Premium to Follow'
+                : 'Follow This Plan'}
+          </button>
+        )}
+      </div>
 
       {/* Overall Progress */}
       <div className="mb-8 rounded-xl border border-gray-200 bg-white p-4">
