@@ -7,11 +7,13 @@ MyWorkouts is a personalized workout companion app with voice-first controls, an
 - **Monorepo:** Turborepo + pnpm workspaces
 - **Mobile:** Expo SDK 52+ with Expo Router (file-based routing), NativeWind
 - **Web:** Next.js 15 (App Router), Tailwind CSS
-- **Coach Portal:** Next.js 15 (stub)
+- **Coach Portal:** Next.js 15 (coach review dashboard)
 - **Backend:** Supabase (PostgreSQL + Auth + Storage + Realtime)
 - **State:** Zustand
 - **Body Map:** react-native-svg (mobile) + SVG (web)
-- **Voice:** Custom parser in `packages/shared/src/voice/`
+- **Voice:** Web Speech API adapter + custom parser in `packages/shared/src/voice/`
+- **Camera:** getUserMedia + MediaRecorder (web form recording)
+- **Payments:** Stripe (web) + RevenueCat (mobile, planned)
 - **Language:** TypeScript (strict mode everywhere)
 
 ## Key Commands
@@ -43,9 +45,13 @@ MyWorkouts/
 │   ├── shared/           # Cross-platform business logic
 │   │   └── src/
 │   │       ├── types/    # Shared TypeScript types & enums
-│   │       ├── voice/    # Voice command parser
-│   │       ├── workout/  # Workout engine (timers, sets, reps)
+│   │       ├── voice/    # Voice command parser (pause, resume, skip, record, etc.)
+│   │       ├── workout/  # Workout engine (state machine, builder, plans)
 │   │       ├── body-map/ # Muscle group data + exercise mappings
+│   │       ├── exercise/ # Exercise store factory
+│   │       ├── subscription/ # Pricing tiers, premium feature gates
+│   │       ├── plan/     # Plan builder store, progress calculation
+│   │       ├── progress/ # Streaks, volume tracking, PR detection
 │   │       └── utils/    # Shared utilities
 │   ├── ui/               # Shared UI components
 │   ├── supabase/         # Database types, client config, migrations
@@ -81,10 +87,37 @@ packages/config → (standalone, config files only)
 - `packages/supabase/` — Backend agent
 - `packages/config/` — Config changes require coordination
 
+## Web Routes
+```
+/                        — Landing page
+/auth/sign-in            — Sign in
+/auth/sign-up            — Sign up
+/auth/forgot-password    — Forgot password
+/auth/callback           — OAuth callback
+/explore                 — Exercise library with body map filters
+/exercise/[id]           — Exercise detail with mini body maps
+/workouts                — Workout list
+/workouts/builder        — Workout builder (create/edit)
+/workout/[id]            — Workout player (voice, recording, timer)
+/plans                   — Workout plan list
+/plans/[id]              — Plan detail with progress
+/plans/builder           — Plan builder (create/edit)
+/recordings              — Form recording list (Premium)
+/recordings/[id]         — Recording review with coach feedback
+/progress                — Progress tracking (streaks, volume, PRs)
+/profile                 — User profile
+/pricing                 — Subscription pricing
+/api/webhooks/stripe     — Stripe webhook handler
+```
+
 ## Important Notes
 - All packages use TypeScript strict mode
 - The `packages/shared` library is platform-agnostic (no React, no DOM, no Node.js APIs)
 - Supabase types in `packages/supabase/src/types.ts` are a placeholder — run `supabase gen types` to regenerate
+- Supabase typed client resolves some tables to `never` — use `(supabase as any).from('table')` as a workaround until types are regenerated
 - NativeWind v4 is used for mobile styling (Tailwind classes in React Native)
 - The web app uses `@supabase/ssr` for server-side Supabase access
 - Coach portal runs on port 3001 to avoid conflicts with the web app
+- Form recording requires Premium subscription — gated via `useSubscriptionStore().isPremium()`
+- Recordings stored in Supabase Storage `recordings` bucket with path pattern `{userId}/{sessionId}/{exerciseId}-{timestamp}.webm`
+- 4 SQL migrations in `packages/supabase/migrations/` (schema, auth trigger, seed data, storage bucket)
