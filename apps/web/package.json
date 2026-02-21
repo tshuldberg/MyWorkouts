@@ -11,6 +11,7 @@
     "clean": "rm -rf .next"
   },
   "dependencies": {
+    "@myworkouts/config": "workspace:*",
     "@myworkouts/shared": "workspace:*",
     "@myworkouts/supabase": "workspace:*",
     "@myworkouts/ui": "workspace:*",
