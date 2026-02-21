@@ -1,5 +1,26 @@
 import type { WorkoutExercise, CompletedExercise } from '../types/index.js';
 
+export {
+  createWorkoutBuilderStore,
+  estimateDuration,
+  toWorkoutPayload,
+  type WorkoutBuilderExercise,
+  type WorkoutBuilderState,
+  type WorkoutBuilderActions,
+  type WorkoutBuilderStore,
+} from './builder.js';
+
+export {
+  createPlayerStatus,
+  reducePlayer,
+  playerProgress,
+  formatTime,
+  SPEED_OPTIONS,
+  type PlayerState,
+  type PlayerStatus,
+  type PlayerAction,
+} from './engine.js';
+
 export type WorkoutPlayerState = 'idle' | 'playing' | 'paused' | 'rest' | 'completed';
 
 export interface WorkoutPlayerStatus {
