@@ -1,6 +1,6 @@
 # MyWorkouts — Timeline
 
-## 2026-02-21 — Feature Build Sprint (10 of 11 features)
+## 2026-02-21 — Feature Build Sprint (11/11 features complete)
 
 ### F2: Auth + User Profiles (`8d6e6e0`)
 - Supabase Auth with email/password (sign-in, sign-up, forgot password)
@@ -16,11 +16,11 @@
 - Pricing pages on web and mobile
 
 ### F3: Exercise Library + Body Map (`42aba15`)
-- Interactive SVG body map (web) and react-native-svg version (mobile)
-- Muscle group highlight/filter system
+- Interactive SVG body map (web: react-body-highlighter, mobile: react-native-body-highlighter)
+- Muscle group highlight/filter system with slug-to-enum mapping
 - Exercise detail pages with mini body maps showing targeted muscles
-- Explore page with category/difficulty filters
-- Exercise seed data migration (30+ exercises)
+- Explore page with category pills, search, body map multi-select filtering
+- Supabase seed migration with 50 exercises across 7 categories
 
 ### F6: Workout Builder (`ff6fc5b`)
 - Workout builder page with exercise picker modal, search, reordering
@@ -54,14 +54,22 @@
 - Progress tracking page with streaks, volume, PRs, history
 - Shared progress utilities in `packages/shared/src/progress/`
 
-### F11: Personalized Workout Plans (builder-ui)
+### F11: Personalized Workout Plans (`6058bb6`)
 - Plan builder with weekly grid, workout picker per day
-- Plan progress calculation with completion percentage
-- Plan list and detail pages (web + mobile)
+- Plan consumer store with follow/unfollow, current position tracking
+- Plan list and detail pages (web + mobile) with premium gating
+- Coach plan creation UI in coach portal
+- `plan_subscriptions` table migration with RLS
 
-### F10: Coach Review Portal (in progress — builder-ui)
+### F10: Coach Review Portal (`35597f6`, `790babc`)
+- Coach dashboard with stat cards (active clients, plans, recent sessions)
+- Client list page with enriched data (session count, last workout, active plan)
+- Client detail page with workout history, form recordings, and coach feedback
+- Inline feedback submission form for timestamped coaching notes
+- Coach role detection (not-a-coach guard)
+- Settings page with profile info and sign out
 
-**Stats:** 85 files changed, 9,555 insertions, 36 deletions across 8 commits.
+**Final stats:** 98 files changed, 11,466 insertions, 53 deletions across 13 commits.
 
 ## 2026-02-20 — Initial Scaffold
 - Created Turborepo monorepo with pnpm workspaces
