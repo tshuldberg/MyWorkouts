@@ -21,6 +21,10 @@
       "types": "./dist/workout/index.d.ts",
       "default": "./dist/workout/index.js"
     },
+    "./auth": {
+      "types": "./dist/auth/index.d.ts",
+      "default": "./dist/auth/index.js"
+    },
     "./body-map": {
       "types": "./dist/body-map/index.d.ts",
       "default": "./dist/body-map/index.js"

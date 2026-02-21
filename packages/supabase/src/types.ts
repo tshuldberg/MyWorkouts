@@ -56,7 +56,18 @@ export interface Database {
           audio_cues?: Record<string, unknown>[];
           is_premium?: boolean;
         };
-        Update: Partial<Database['public']['Tables']['exercises']['Insert']>;
+        Update: {
+          id?: string;
+          name?: string;
+          description?: string;
+          category?: 'cardio' | 'strength' | 'mobility' | 'fascia' | 'recovery' | 'flexibility' | 'balance';
+          muscle_groups?: string[];
+          video_url?: string | null;
+          thumbnail_url?: string | null;
+          difficulty?: 'beginner' | 'intermediate' | 'advanced';
+          audio_cues?: Record<string, unknown>[];
+          is_premium?: boolean;
+        };
       };
       workouts: {
         Row: {
@@ -80,7 +91,16 @@ export interface Database {
           estimated_duration: number;
           is_premium?: boolean;
         };
-        Update: Partial<Database['public']['Tables']['workouts']['Insert']>;
+        Update: {
+          id?: string;
+          title?: string;
+          description?: string;
+          creator_id?: string;
+          difficulty?: 'beginner' | 'intermediate' | 'advanced';
+          exercises?: Record<string, unknown>[];
+          estimated_duration?: number;
+          is_premium?: boolean;
+        };
       };
       workout_sessions: {
         Row: {
@@ -103,7 +123,16 @@ export interface Database {
           voice_commands_used?: Record<string, unknown>[];
           pace_adjustments?: Record<string, unknown>[];
         };
-        Update: Partial<Database['public']['Tables']['workout_sessions']['Insert']>;
+        Update: {
+          id?: string;
+          user_id?: string;
+          workout_id?: string;
+          started_at?: string;
+          completed_at?: string | null;
+          exercises_completed?: Record<string, unknown>[];
+          voice_commands_used?: Record<string, unknown>[];
+          pace_adjustments?: Record<string, unknown>[];
+        };
       };
       form_recordings: {
         Row: {
@@ -125,7 +154,15 @@ export interface Database {
           timestamp_end: number;
           coach_feedback?: Record<string, unknown>[];
         };
-        Update: Partial<Database['public']['Tables']['form_recordings']['Insert']>;
+        Update: {
+          id?: string;
+          session_id?: string;
+          video_url?: string;
+          exercise_id?: string;
+          timestamp_start?: number;
+          timestamp_end?: number;
+          coach_feedback?: Record<string, unknown>[];
+        };
       };
       workout_plans: {
         Row: {
@@ -143,7 +180,13 @@ export interface Database {
           weeks: Record<string, unknown>[];
           is_premium?: boolean;
         };
-        Update: Partial<Database['public']['Tables']['workout_plans']['Insert']>;
+        Update: {
+          id?: string;
+          title?: string;
+          coach_id?: string;
+          weeks?: Record<string, unknown>[];
+          is_premium?: boolean;
+        };
       };
       subscriptions: {
         Row: {
@@ -164,7 +207,15 @@ export interface Database {
           status: 'active' | 'canceled' | 'expired' | 'trialing';
           expires_at: string;
         };
-        Update: Partial<Database['public']['Tables']['subscriptions']['Insert']>;
+        Update: {
+          id?: string;
+          user_id?: string;
+          plan?: 'free' | 'premium';
+          provider?: 'revenuecat' | 'stripe';
+          external_id?: string;
+          status?: 'active' | 'canceled' | 'expired' | 'trialing';
+          expires_at?: string;
+        };
       };
     };
     Views: Record<string, never>;
