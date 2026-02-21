@@ -36,6 +36,10 @@
     "./subscription": {
       "types": "./dist/subscription/index.d.ts",
       "default": "./dist/subscription/index.js"
+    },
+    "./plan": {
+      "types": "./dist/plan/index.d.ts",
+      "default": "./dist/plan/index.js"
     }
   },
   "scripts": {

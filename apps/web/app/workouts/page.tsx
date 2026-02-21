@@ -83,13 +83,22 @@ export default function WorkoutsPage() {
                 <div className="text-xs text-gray-400 mt-1 line-clamp-1">{w.description}</div>
               )}
             </div>
-            <button
-              type="button"
-              onClick={() => router.push(`/workouts/builder?edit=${w.id}`)}
-              className="text-sm text-indigo-500 hover:underline"
-            >
-              Edit
-            </button>
+            <div className="flex gap-2 ml-4">
+              <button
+                type="button"
+                onClick={() => router.push(`/workout/${w.id}`)}
+                className="rounded-lg bg-indigo-500 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-600 transition-colors"
+              >
+                Start
+              </button>
+              <button
+                type="button"
+                onClick={() => router.push(`/workouts/builder?edit=${w.id}`)}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
+              >
+                Edit
+              </button>
+            </div>
           </div>
         ))}
       </div>

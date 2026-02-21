@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { Suspense, useEffect, useState, useCallback, useMemo } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   type Exercise,
@@ -21,7 +21,15 @@ function formatDuration(seconds: number): string {
 
 const DIFFICULTIES: Difficulty[] = [Difficulty.Beginner, Difficulty.Intermediate, Difficulty.Advanced];
 
-export default function WorkoutBuilderPage() {
+export default function WorkoutBuilderPageWrapper() {
+  return (
+    <Suspense fallback={<div className="py-12 text-center text-gray-400">Loading...</div>}>
+      <WorkoutBuilderPage />
+    </Suspense>
+  );
+}
+
+function WorkoutBuilderPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const editId = searchParams.get('edit');
