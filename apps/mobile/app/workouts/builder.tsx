@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -30,8 +30,11 @@ const DIFFICULTIES: Difficulty[] = [Difficulty.Beginner, Difficulty.Intermediate
 
 export default function WorkoutBuilderScreen() {
   const router = useRouter();
-  const params = useLocalSearchParams<{ edit?: string }>();
+  const params = useLocalSearchParams<{ edit?: string; add?: string }>();
   const editId = params.edit;
+  const addId = params.add;
+  const attemptedPrefillIdsRef = useRef<Set<string>>(new Set());
+  const prefillInFlightRef = useRef(false);
 
   const builder = useWorkoutBuilderStore();
   const exerciseStore = useExerciseStore();
@@ -51,12 +54,16 @@ export default function WorkoutBuilderScreen() {
       });
   }, []);
 
-  // Load workout for editing
+  // Reset to a fresh builder when not editing.
   useEffect(() => {
     if (!editId) {
-      builder.reset();
-      return;
+      useWorkoutBuilderStore.getState().reset();
     }
+  }, [editId]);
+
+  // Load workout for editing
+  useEffect(() => {
+    if (!editId) return;
     supabase
       .from('workouts')
       .select('*')
@@ -72,6 +79,61 @@ export default function WorkoutBuilderScreen() {
         builder.loadWorkout(workout, names);
       });
   }, [editId, exerciseStore.exercises.length]);
+
+  // Prefill builder when routed with ?add=<exerciseId>
+  useEffect(() => {
+    if (editId || !addId || attemptedPrefillIdsRef.current.has(addId) || prefillInFlightRef.current) return;
+    attemptedPrefillIdsRef.current.add(addId);
+    prefillInFlightRef.current = true;
+
+    const prefillFromExercise = async () => {
+      try {
+        const currentBuilder = useWorkoutBuilderStore.getState();
+        const alreadyAdded = currentBuilder.exercises.some((e) => e.exercise_id === addId);
+        if (alreadyAdded) {
+          return;
+        }
+
+        const currentExerciseStore = useExerciseStore.getState();
+        const localMatch = currentExerciseStore.exercises.find((e) => e.id === addId);
+        if (localMatch) {
+          currentBuilder.addExercise(localMatch);
+          if (!currentBuilder.title.trim()) {
+            currentBuilder.setTitle(`${localMatch.name} Workout`);
+          }
+          return;
+        }
+
+        const { data } = await supabase
+          .from('exercises')
+          .select('*')
+          .eq('id', addId)
+          .single();
+
+        if (!data) return;
+
+        const fetched = data as Exercise;
+        const latestBuilder = useWorkoutBuilderStore.getState();
+        const existsInBuilder = latestBuilder.exercises.some((e) => e.exercise_id === addId);
+        if (!existsInBuilder) {
+          latestBuilder.addExercise(fetched);
+          if (!latestBuilder.title.trim()) {
+            latestBuilder.setTitle(`${fetched.name} Workout`);
+          }
+        }
+
+        const latestExercises = useExerciseStore.getState().exercises;
+        if (!latestExercises.some((e) => e.id === fetched.id)) {
+          const mergedExercises = [...latestExercises, fetched].sort((a, b) => a.name.localeCompare(b.name));
+          useExerciseStore.getState().setExercises(mergedExercises);
+        }
+      } finally {
+        prefillInFlightRef.current = false;
+      }
+    };
+
+    prefillFromExercise();
+  }, [addId, editId]);
 
   const filteredExercises = useMemo(() => {
     if (exerciseSearch.length < 2) return exerciseStore.exercises;

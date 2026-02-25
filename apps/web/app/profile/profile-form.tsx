@@ -24,7 +24,11 @@ export function ProfileForm({ email, displayName: initialName, avatarUrl: initia
 
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
+    if (!user) {
+      setMessage('Error: Please sign in again to update your profile.');
+      setSaving(false);
+      return;
+    }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { error } = await (supabase as any)

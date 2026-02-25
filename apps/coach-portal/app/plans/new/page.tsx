@@ -63,19 +63,29 @@ function NewPlanPage() {
   useEffect(() => {
     (async () => {
       const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        router.push('/auth/sign-in');
+        return;
+      }
       const { data } = await supabase
         .from('workouts')
         .select('*')
         .order('title');
       if (data) setWorkouts(data as Workout[]);
     })();
-  }, []);
+  }, [router]);
 
   // Load plan for editing
   useEffect(() => {
     if (!editId) return;
     (async () => {
       const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        router.push('/auth/sign-in');
+        return;
+      }
       const { data } = await supabase
         .from('workout_plans')
         .select('*')
@@ -93,7 +103,7 @@ function NewPlanPage() {
         });
       }
     })();
-  }, [editId]);
+  }, [editId, router]);
 
   const filteredWorkouts = useMemo(() => {
     if (workoutSearch.length < 2) return workouts;

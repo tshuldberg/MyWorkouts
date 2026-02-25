@@ -1,11 +1,21 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { PRICING } from '@myworkouts/shared';
 import { SubscriptionPlan } from '@myworkouts/shared';
 
 export default function PricingPage() {
+  const router = useRouter();
   const [annual, setAnnual] = useState(true);
+
+  const handlePlanAction = (plan: SubscriptionPlan) => {
+    if (plan === SubscriptionPlan.Free) {
+      router.push('/profile');
+      return;
+    }
+    router.push('/auth/sign-in?next=/pricing');
+  };
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-16">
@@ -68,6 +78,8 @@ export default function PricingPage() {
             </ul>
 
             <button
+              type="button"
+              onClick={() => handlePlanAction(tier.plan)}
               className={`mt-8 w-full rounded-lg py-2.5 text-sm font-semibold ${
                 tier.plan === SubscriptionPlan.Premium
                   ? 'bg-primary-600 text-white hover:bg-primary-700'

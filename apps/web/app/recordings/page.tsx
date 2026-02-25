@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import type { FormRecording } from '@myworkouts/shared';
 import { createClient } from '@/lib/supabase/client';
-import { deleteRecording, getRecordingUrl } from '@/lib/recording-upload';
+import { deleteRecording } from '@/lib/recording-upload';
 
 interface RecordingWithExercise extends FormRecording {
   exercise_name?: string;
@@ -17,6 +17,7 @@ export default function RecordingsPage() {
   const [loading, setLoading] = useState(true);
   const [storageUsed, setStorageUsed] = useState(0);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const fetchRecordings = useCallback(async () => {
     const supabase = createClient();
@@ -72,9 +73,17 @@ export default function RecordingsPage() {
   const handleDelete = useCallback(async (recording: RecordingWithExercise) => {
     if (!confirm('Delete this recording? This cannot be undone.')) return;
     setDeleting(recording.id);
-    await deleteRecording(recording.id, recording.video_url);
-    setRecordings((prev) => prev.filter((r) => r.id !== recording.id));
-    setDeleting(null);
+    setError(null);
+    try {
+      const deleted = await deleteRecording(recording.id, recording.video_url);
+      if (!deleted) {
+        setError('Could not delete recording. Please try again.');
+        return;
+      }
+      setRecordings((prev) => prev.filter((r) => r.id !== recording.id));
+    } finally {
+      setDeleting(null);
+    }
   }, []);
 
   return (
@@ -93,6 +102,12 @@ export default function RecordingsPage() {
           </div>
         )}
       </div>
+
+      {error && (
+        <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          {error}
+        </p>
+      )}
 
       {loading && (
         <p className="py-12 text-center text-gray-400">Loading recordings...</p>

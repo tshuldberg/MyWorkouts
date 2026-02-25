@@ -258,7 +258,7 @@ export default function WorkoutPlayerPage() {
         }
       }
     },
-    [dispatch, status.state],
+    [dispatch, status.state, isPremium, cameraEnabled, isRecording, toggleRecording],
   );
 
   // Voice recognition lifecycle
