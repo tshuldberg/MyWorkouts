@@ -6,7 +6,6 @@ import dynamic from 'next/dynamic';
 import {
   type Exercise,
   MuscleGroup,
-  MUSCLE_GROUP_TO_SLUGS,
   muscleGroupLabel,
 } from '@myworkouts/shared';
 import { createClient } from '@/lib/supabase/client';
@@ -54,6 +53,7 @@ export default function ExerciseDetailPage() {
   const router = useRouter();
   const [exercise, setExercise] = useState<Exercise | null>(null);
   const [loading, setLoading] = useState(true);
+  const [startingWorkout, setStartingWorkout] = useState(false);
 
   useEffect(() => {
     const supabase = createClient();
@@ -106,9 +106,55 @@ export default function ExerciseDetailPage() {
   });
   const allHighlight = [...primaryHighlight, ...secondaryHighlight];
 
-  // Determine default sets/reps display
-  const audioCues = exercise.audio_cues as any;
-  const audioCueText = audioCues?.[0]?.text ?? exercise.description;
+  const handleAddToWorkout = () => {
+    router.push(`/workouts/builder?add=${exercise.id}`);
+  };
+
+  const handleStartWorkout = async () => {
+    setStartingWorkout(true);
+    try {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+
+      if (!user) {
+        router.push('/auth/sign-in');
+        return;
+      }
+
+      const payload = {
+        title: `${exercise.name} Quick Start`,
+        description: `Quick workout based on ${exercise.name}`,
+        creator_id: user.id,
+        difficulty: exercise.difficulty,
+        exercises: [
+          {
+            exercise_id: exercise.id,
+            sets: 3,
+            reps: 10,
+            duration: null,
+            rest_after: 45,
+            order: 0,
+          },
+        ],
+        estimated_duration: 180,
+        is_premium: false,
+      };
+
+      const { data, error } = await (supabase.from('workouts') as any)
+        .insert(payload)
+        .select('id')
+        .single();
+
+      if (error || !data?.id) {
+        router.push(`/workouts/builder?add=${exercise.id}`);
+        return;
+      }
+
+      router.push(`/workout/${data.id}`);
+    } finally {
+      setStartingWorkout(false);
+    }
+  };
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-6">
@@ -198,12 +244,15 @@ export default function ExerciseDetailPage() {
       <div className="mt-8 flex gap-3">
         <button
           type="button"
+          onClick={handleStartWorkout}
+          disabled={startingWorkout}
           className="flex-1 rounded-lg bg-indigo-500 py-3 text-center font-semibold text-white hover:bg-indigo-600 transition-colors"
         >
-          Start Workout
+          {startingWorkout ? 'Starting...' : 'Start Workout'}
         </button>
         <button
           type="button"
+          onClick={handleAddToWorkout}
           className="flex-1 rounded-lg border border-indigo-500 py-3 text-center font-semibold text-indigo-500 hover:bg-indigo-50 transition-colors"
         >
           Add to Workout

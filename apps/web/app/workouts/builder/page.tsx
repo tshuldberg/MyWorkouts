@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useState, useCallback, useMemo } from 'react';
+import { Suspense, useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import {
   type Exercise,
@@ -33,9 +33,11 @@ function WorkoutBuilderPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const editId = searchParams.get('edit');
+  const addExerciseId = searchParams.get('add');
 
   const builder = useWorkoutBuilderStore();
   const exerciseStore = useExerciseStore();
+  const injectedExerciseRef = useRef<string | null>(null);
   const [showExercisePicker, setShowExercisePicker] = useState(false);
   const [exerciseSearch, setExerciseSearch] = useState('');
   const [saving, setSaving] = useState(false);
@@ -75,6 +77,25 @@ function WorkoutBuilderPage() {
         builder.loadWorkout(workout, names);
       });
   }, [editId, exerciseStore.exercises.length]);
+
+  // Optionally inject a specific exercise when arriving from exercise detail.
+  useEffect(() => {
+    if (!addExerciseId || editId) return;
+    if (injectedExerciseRef.current === addExerciseId) return;
+
+    const exercise = exerciseStore.exercises.find((e) => e.id === addExerciseId);
+    if (!exercise) return;
+
+    const alreadyAdded = builder.exercises.some((e) => e.exercise_id === addExerciseId);
+    if (!alreadyAdded) {
+      if (!builder.title.trim()) {
+        builder.setTitle(`${exercise.name} Workout`);
+      }
+      builder.addExercise(exercise);
+    }
+
+    injectedExerciseRef.current = addExerciseId;
+  }, [addExerciseId, editId, exerciseStore.exercises, builder]);
 
   // Filter exercises for picker
   const filteredExercises = useMemo(() => {

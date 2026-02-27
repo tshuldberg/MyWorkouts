@@ -1,10 +1,12 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import type { User } from '@myworkouts/shared';
 import { createClient } from '@/lib/supabase/client';
 
 export default function SettingsPage() {
+  const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [clientCount, setClientCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -15,6 +17,7 @@ export default function SettingsPage() {
       const { data: { user: authUser } } = await supabase.auth.getUser();
       if (!authUser) {
         setLoading(false);
+        router.push('/auth/sign-in');
         return;
       }
 
@@ -34,7 +37,7 @@ export default function SettingsPage() {
       setClientCount(count ?? 0);
       setLoading(false);
     })();
-  }, []);
+  }, [router]);
 
   const handleSignOut = async () => {
     const supabase = createClient();

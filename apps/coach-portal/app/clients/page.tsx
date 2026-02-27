@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { createClient } from '../../lib/supabase/client';
 
@@ -16,6 +17,7 @@ interface ClientRow {
 }
 
 export default function ClientsPage() {
+  const router = useRouter();
   const [clients, setClients] = useState<ClientRow[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -23,7 +25,11 @@ export default function ClientsPage() {
     async function load() {
       const supabase = createClient();
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!user) {
+        setLoading(false);
+        router.push('/auth/sign-in');
+        return;
+      }
 
       // Fetch clients assigned to this coach
       const { data: users } = await supabase
@@ -83,7 +89,7 @@ export default function ClientsPage() {
       setLoading(false);
     }
     load();
-  }, []);
+  }, [router]);
 
   function formatDate(iso: string): string {
     return new Date(iso).toLocaleDateString('en-US', {

@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
   ScrollView,
   TouchableOpacity,
+  useWindowDimensions,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import Body from 'react-native-body-highlighter';
@@ -35,8 +36,69 @@ function buildMiniMapData(muscles: string[], isPrimary: boolean) {
 export default function ExerciseDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const { width } = useWindowDimensions();
   const [exercise, setExercise] = useState<Exercise | null>(null);
   const [loading, setLoading] = useState(true);
+  const [startingWorkout, setStartingWorkout] = useState(false);
+
+  const sectionStyle = {
+    width: Math.min(Math.max(width - 32, 280), 560),
+    alignSelf: 'center' as const,
+  };
+  const mapScale = width >= 900 ? 0.5 : width >= 768 ? 0.45 : width < 360 ? 0.3 : 0.35;
+
+  const handleAddToWorkout = useCallback(() => {
+    if (!exercise) return;
+    router.push(`/workouts/builder?add=${exercise.id}` as any);
+  }, [exercise, router]);
+
+  const handleStartWorkout = useCallback(async () => {
+    if (!exercise || startingWorkout) return;
+    setStartingWorkout(true);
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        router.push('/auth/sign-in' as any);
+        return;
+      }
+
+      const payload = {
+        title: `${exercise.name} Quick Start`,
+        description: `Quick workout based on ${exercise.name}`,
+        creator_id: user.id,
+        difficulty: exercise.difficulty,
+        estimated_duration: 180,
+        is_premium: false,
+        exercises: [
+          {
+            exercise_id: exercise.id,
+            sets: 3,
+            reps: 10,
+            duration: null,
+            rest_after: 45,
+            order: 0,
+          },
+        ],
+      };
+
+      const { data, error } = await (supabase.from('workouts') as any)
+        .insert(payload)
+        .select('id')
+        .single();
+
+      if (!error && data?.id) {
+        router.push(`/workout/${data.id}` as any);
+        return;
+      }
+
+      router.push(`/workouts/builder?add=${exercise.id}` as any);
+    } catch {
+      router.push(`/workouts/builder?add=${exercise.id}` as any);
+    } finally {
+      setStartingWorkout(false);
+    }
+  }, [exercise, startingWorkout, router]);
 
   useEffect(() => {
     supabase
@@ -87,13 +149,13 @@ export default function ExerciseDetailScreen() {
       </TouchableOpacity>
 
       {/* Video Placeholder */}
-      <View className="mx-4 h-48 items-center justify-center rounded-xl bg-gray-100">
+      <View className="h-48 items-center justify-center rounded-xl bg-gray-100" style={sectionStyle}>
         <Text className="text-4xl">{'\u25B6\uFE0F'}</Text>
         <Text className="mt-2 text-sm text-gray-400">Coach video coming soon</Text>
       </View>
 
       {/* Exercise Info */}
-      <View className="px-4 mt-4">
+      <View className="mt-4" style={sectionStyle}>
         <Text className="text-2xl font-bold text-gray-900">{exercise.name}</Text>
         <Text className="mt-1 text-sm text-gray-500">
           {exercise.category.charAt(0).toUpperCase() + exercise.category.slice(1)}
@@ -104,7 +166,7 @@ export default function ExerciseDetailScreen() {
       </View>
 
       {/* Primary / Secondary Muscles */}
-      <View className="px-4 mt-5 flex-row gap-4">
+      <View className="mt-5 flex-row gap-4" style={sectionStyle}>
         <View className="flex-1">
           <Text className="text-xs font-semibold uppercase tracking-wide text-gray-400">
             Primary
@@ -139,7 +201,7 @@ export default function ExerciseDetailScreen() {
             data={allMapData}
             side="front"
             colors={['#A5B4FC', '#6366F1']}
-            scale={0.35}
+            scale={mapScale}
             border="#E5E7EB"
           />
         </View>
@@ -149,14 +211,14 @@ export default function ExerciseDetailScreen() {
             data={allMapData}
             side="back"
             colors={['#A5B4FC', '#6366F1']}
-            scale={0.35}
+            scale={mapScale}
             border="#E5E7EB"
           />
         </View>
       </View>
 
       {/* Description */}
-      <View className="px-4 mt-5">
+      <View className="mt-5" style={sectionStyle}>
         <Text className="text-xs font-semibold uppercase tracking-wide text-gray-400">
           Description
         </Text>
@@ -165,12 +227,19 @@ export default function ExerciseDetailScreen() {
         </Text>
       </View>
 
-      {/* Action Buttons (stubs) */}
-      <View className="px-4 mt-8 gap-3">
-        <TouchableOpacity className="rounded-lg bg-indigo-500 py-3">
-          <Text className="text-center font-semibold text-white">Start Workout</Text>
+      {/* Actions */}
+      <View className="mt-8 gap-3" style={sectionStyle}>
+        <TouchableOpacity
+          onPress={handleStartWorkout}
+          disabled={startingWorkout}
+          className="rounded-lg bg-indigo-500 py-3"
+          style={{ opacity: startingWorkout ? 0.6 : 1 }}
+        >
+          <Text className="text-center font-semibold text-white">
+            {startingWorkout ? 'Starting...' : 'Start Workout'}
+          </Text>
         </TouchableOpacity>
-        <TouchableOpacity className="rounded-lg border border-indigo-500 py-3">
+        <TouchableOpacity onPress={handleAddToWorkout} className="rounded-lg border border-indigo-500 py-3">
           <Text className="text-center font-semibold text-indigo-500">Add to Workout</Text>
         </TouchableOpacity>
       </View>

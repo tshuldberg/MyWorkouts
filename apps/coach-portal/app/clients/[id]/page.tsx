@@ -1,6 +1,6 @@
 'use client';
 
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { createClient } from '../../../lib/supabase/client';
@@ -35,6 +35,7 @@ interface RecordingRow {
 
 export default function ClientDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
   const [client, setClient] = useState<ClientProfile | null>(null);
   const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [recordings, setRecordings] = useState<RecordingRow[]>([]);
@@ -44,19 +45,25 @@ export default function ClientDetailPage() {
   useEffect(() => {
     async function load() {
       const supabase = createClient();
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (!authUser) {
+        setLoading(false);
+        router.push('/auth/sign-in');
+        return;
+      }
 
       // Fetch client profile
-      const { data: user } = await supabase
+      const { data: profile } = await supabase
         .from('users')
         .select('id, display_name, email, avatar_url, created_at')
         .eq('id', id)
         .single();
 
-      if (!user) {
+      if (!profile) {
         setLoading(false);
         return;
       }
-      setClient(user);
+      setClient(profile);
 
       // Fetch workout sessions with workout titles
       const { data: sessionsData } = await supabase
@@ -112,7 +119,7 @@ export default function ClientDetailPage() {
       setLoading(false);
     }
     load();
-  }, [id]);
+  }, [id, router]);
 
   async function submitFeedback(recordingId: string) {
     const comment = feedbackText[recordingId]?.trim();

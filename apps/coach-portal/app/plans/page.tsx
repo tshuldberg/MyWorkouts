@@ -17,6 +17,7 @@ export default function CoachPlansPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         setLoading(false);
+        router.push('/auth/sign-in');
         return;
       }
 
@@ -29,7 +30,7 @@ export default function CoachPlansPage() {
       if (data) setPlans(data as WorkoutPlan[]);
       setLoading(false);
     })();
-  }, []);
+  }, [router]);
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-6">
