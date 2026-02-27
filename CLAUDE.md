@@ -87,6 +87,16 @@ packages/config → (standalone, config files only)
 - `packages/supabase/` — Backend agent
 - `packages/config/` — Config changes require coordination
 
+## Agent Teams Strategy
+
+When 2+ plans target this project with overlapping scope, use an Agent Team instead of parallel subagents. Custom agent definitions from `/Users/trey/Desktop/Apps/.claude/agents/` and `/Users/trey/Desktop/Apps/MyLife/.claude/agents/`:
+- `plan-executor` -- Execute plan phases with testing and verification
+- `test-writer` -- Write tests without modifying source code
+- `docs-agent` -- Update documentation
+- `reviewer` -- Read-only code review (uses Sonnet)
+
+Agents working in different File Ownership Zones can run in parallel without conflicts. Agents sharing a zone must coordinate via the team task list.
+
 ## Web Routes
 ```
 /                        — Landing page
@@ -121,3 +131,7 @@ packages/config → (standalone, config files only)
 - Form recording requires Premium subscription — gated via `useSubscriptionStore().isPremium()`
 - Recordings stored in Supabase Storage `recordings` bucket with path pattern `{userId}/{sessionId}/{exerciseId}-{timestamp}.webm`
 - 4 SQL migrations in `packages/supabase/migrations/` (schema, auth trigger, seed data, storage bucket)
+
+
+## Writing Style
+- Do not use em dashes in documents or writing.
