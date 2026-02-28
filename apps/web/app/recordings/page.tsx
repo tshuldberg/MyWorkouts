@@ -3,8 +3,8 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import type { FormRecording } from '@myworkouts/shared';
-import { createClient } from '@/lib/supabase/client';
-import { deleteRecording } from '@/lib/recording-upload';
+import { fetchFormRecordings, fetchExercisesByIds, removeFormRecording } from '../../lib/actions';
+import { workoutsPath } from '../../lib/routes';
 
 interface RecordingWithExercise extends FormRecording {
   exercise_name?: string;
@@ -19,41 +19,21 @@ export default function RecordingsPage() {
   const [deleting, setDeleting] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchRecordings = useCallback(async () => {
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      setLoading(false);
-      return;
-    }
+  const loadRecordings = useCallback(async () => {
+    const data = await fetchFormRecordings();
 
-    // Get recordings via session join
-    const { data } = await (supabase as any)
-      .from('form_recordings')
-      .select(`
-        *,
-        workout_sessions!inner(user_id)
-      `)
-      .eq('workout_sessions.user_id', user.id)
-      .order('created_at', { ascending: false });
-
-    if (data) {
+    if (data.length > 0) {
       // Enrich with exercise names
-      const exerciseIds = [...new Set((data as any[]).map((r: any) => r.exercise_id))];
-      const { data: exercises } = await supabase
-        .from('exercises')
-        .select('id, name')
-        .in('id', exerciseIds);
+      const exerciseIds = [...new Set(data.map((r) => r.exercise_id))];
+      const exercises = await fetchExercisesByIds(exerciseIds);
 
       const nameMap: Record<string, string> = {};
-      if (exercises) {
-        for (const e of exercises as any[]) {
-          nameMap[e.id] = e.name;
-        }
+      for (const e of exercises) {
+        nameMap[e.id] = e.name;
       }
 
       setRecordings(
-        (data as any[]).map((r: any) => ({
+        data.map((r) => ({
           ...r,
           exercise_name: nameMap[r.exercise_id] ?? 'Unknown Exercise',
         })),
@@ -61,29 +41,23 @@ export default function RecordingsPage() {
 
       // Estimate storage (rough: count recordings * avg size)
       setStorageUsed(data.length * 15); // ~15MB avg estimate per recording
+    } else {
+      setRecordings([]);
     }
 
     setLoading(false);
   }, []);
 
   useEffect(() => {
-    fetchRecordings();
-  }, [fetchRecordings]);
+    loadRecordings();
+  }, [loadRecordings]);
 
   const handleDelete = useCallback(async (recording: RecordingWithExercise) => {
     if (!confirm('Delete this recording? This cannot be undone.')) return;
     setDeleting(recording.id);
-    setError(null);
-    try {
-      const deleted = await deleteRecording(recording.id, recording.video_url);
-      if (!deleted) {
-        setError('Could not delete recording. Please try again.');
-        return;
-      }
-      setRecordings((prev) => prev.filter((r) => r.id !== recording.id));
-    } finally {
-      setDeleting(null);
-    }
+    await removeFormRecording(recording.id);
+    setRecordings((prev) => prev.filter((r) => r.id !== recording.id));
+    setDeleting(null);
   }, []);
 
   return (
@@ -124,7 +98,7 @@ export default function RecordingsPage() {
           </p>
           <button
             type="button"
-            onClick={() => router.push('/workouts')}
+            onClick={() => router.push(workoutsPath('/workouts'))}
             className="mt-4 text-indigo-500 text-sm hover:underline"
           >
             Start a workout
@@ -140,7 +114,7 @@ export default function RecordingsPage() {
           >
             <button
               type="button"
-              onClick={() => router.push(`/recordings/${rec.id}`)}
+              onClick={() => router.push(workoutsPath(`/recordings/${rec.id}`))}
               className="flex-1 text-left"
             >
               <div className="font-medium text-gray-900">

@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { createClient } from '@/lib/supabase/client';
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
@@ -15,17 +14,8 @@ export default function ForgotPasswordPage() {
     setError(null);
     setLoading(true);
 
-    const supabase = createClient();
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${window.location.origin}/auth/callback?next=/profile`,
-    });
-
-    if (error) {
-      setError(error.message);
-      setLoading(false);
-      return;
-    }
-
+    // In local SQLite mode, there is no password reset flow.
+    // Show success message to keep the UX consistent.
     setSuccess(true);
     setLoading(false);
   }
@@ -34,9 +24,9 @@ export default function ForgotPasswordPage() {
     return (
       <div className="flex min-h-[80vh] items-center justify-center">
         <div className="max-w-sm text-center">
-          <h1 className="text-2xl font-bold text-gray-900">Check Your Email</h1>
+          <h1 className="text-2xl font-bold text-gray-900">No Password Required</h1>
           <p className="mt-2 text-sm text-gray-500">
-            We sent a password reset link to <strong>{email}</strong>.
+            In local mode, authentication is automatic. Just sign in to continue.
           </p>
           <Link href="/auth/sign-in" className="mt-4 inline-block text-sm text-primary-600 hover:underline">
             Back to sign in

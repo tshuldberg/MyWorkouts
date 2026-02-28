@@ -8,7 +8,8 @@ import {
   MuscleGroup,
   muscleGroupLabel,
 } from '@myworkouts/shared';
-import { createClient } from '@/lib/supabase/client';
+import { workoutsPath } from '../../../lib/routes';
+import { findFallbackExercise, loadExercisesWithFallback } from '../../../lib/exercises';
 
 const Model = dynamic(() => import('react-body-highlighter'), { ssr: false });
 
@@ -56,17 +57,33 @@ export default function ExerciseDetailPage() {
   const [startingWorkout, setStartingWorkout] = useState(false);
 
   useEffect(() => {
-    const supabase = createClient();
-    supabase
-      .from('exercises')
-      .select('*')
-      .eq('id', id)
-      .single()
-      .then(({ data }) => {
-        if (data) setExercise(data as Exercise);
+    let active = true;
+
+    // Look up from the in-memory catalog
+    const found = findFallbackExercise(id);
+    if (found) {
+      if (active) {
+        setExercise(found);
         setLoading(false);
-      });
-  }, [id]);
+      }
+      return () => { active = false; };
+    }
+
+    // If not found by id, try loading the full catalog
+    void (async () => {
+      const exercises = await loadExercisesWithFallback();
+      if (!active) return;
+      const match = exercises.find((e) => e.id === id);
+      if (match) {
+        setExercise(match);
+        setLoading(false);
+      } else {
+        router.replace(workoutsPath('/explore'));
+      }
+    })();
+
+    return () => { active = false; };
+  }, [id, router]);
 
   if (loading) {
     return (
@@ -79,10 +96,10 @@ export default function ExerciseDetailPage() {
   if (!exercise) {
     return (
       <div className="flex min-h-[60vh] flex-col items-center justify-center gap-4">
-        <p className="text-gray-500">Exercise not found.</p>
+        <p className="text-gray-500">Redirecting to Explore...</p>
         <button
           type="button"
-          onClick={() => router.push('/explore')}
+          onClick={() => router.push(workoutsPath('/explore'))}
           className="text-indigo-500 hover:underline"
         >
           Back to Explore

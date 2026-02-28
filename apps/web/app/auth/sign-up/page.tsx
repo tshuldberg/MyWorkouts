@@ -1,10 +1,11 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { createClient } from '@/lib/supabase/client';
 
 export default function SignUpPage() {
+  const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -17,36 +18,27 @@ export default function SignUpPage() {
     setError(null);
     setLoading(true);
 
-    const supabase = createClient();
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { display_name: displayName },
-        emailRedirectTo: `${window.location.origin}/auth/callback`,
-      },
-    });
-
-    if (error) {
-      setError(error.message);
-      setLoading(false);
-      return;
-    }
-
+    // In local SQLite mode, sign-up always succeeds (single local-user)
     setSuccess(true);
     setLoading(false);
+
+    // Redirect after brief delay so user sees confirmation
+    setTimeout(() => {
+      router.push('/');
+      router.refresh();
+    }, 1500);
   }
 
   if (success) {
     return (
       <div className="flex min-h-[80vh] items-center justify-center">
         <div className="max-w-sm text-center">
-          <h1 className="text-2xl font-bold text-gray-900">Check Your Email</h1>
+          <h1 className="text-2xl font-bold text-gray-900">Welcome!</h1>
           <p className="mt-2 text-sm text-gray-500">
-            We sent a confirmation link to <strong>{email}</strong>. Click it to activate your account.
+            Your local account is ready. Redirecting...
           </p>
-          <Link href="/auth/sign-in" className="mt-4 inline-block text-sm text-primary-600 hover:underline">
-            Back to sign in
+          <Link href="/" className="mt-4 inline-block text-sm text-primary-600 hover:underline">
+            Go to home
           </Link>
         </div>
       </div>

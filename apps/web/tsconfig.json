@@ -23,6 +23,12 @@
     "paths": {
       "@/*": [
         "./*"
+      ],
+      "@myworkouts/shared": [
+        "../../packages/shared/src/index.ts"
+      ],
+      "@myworkouts/shared/*": [
+        "../../packages/shared/src/*"
       ]
     },
     "allowJs": true,

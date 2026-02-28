@@ -10,7 +10,8 @@ import {
   getWeeklySummaries,
   buildHistory,
 } from '@myworkouts/shared';
-import { createClient } from '@/lib/supabase/client';
+import { fetchWorkoutSessions, fetchExercises, fetchAllWorkouts } from '../../lib/actions';
+import { workoutsPath } from '../../lib/routes';
 
 export default function ProgressPage() {
   const router = useRouter();
@@ -21,33 +22,21 @@ export default function ProgressPage() {
 
   useEffect(() => {
     (async () => {
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        setLoading(false);
-        return;
-      }
-
       // Fetch sessions, exercises, and workout titles in parallel
-      const [sessionsRes, exercisesRes, workoutsRes] = await Promise.all([
-        supabase
-          .from('workout_sessions')
-          .select('*')
-          .eq('user_id', user.id)
-          .order('started_at', { ascending: false }),
-        supabase.from('exercises').select('*'),
-        supabase.from('workouts').select('id, title'),
+      const [sessionsData, exercisesData, workoutsData] = await Promise.all([
+        fetchWorkoutSessions(),
+        fetchExercises(),
+        fetchAllWorkouts(),
       ]);
 
-      if (sessionsRes.data) setSessions(sessionsRes.data as WorkoutSession[]);
-      if (exercisesRes.data) setExercises(exercisesRes.data as Exercise[]);
-      if (workoutsRes.data) {
-        const titles: Record<string, string> = {};
-        for (const w of workoutsRes.data as { id: string; title: string }[]) {
-          titles[w.id] = w.title;
-        }
-        setWorkoutTitles(titles);
+      setSessions(sessionsData);
+      setExercises(exercisesData);
+
+      const titles: Record<string, string> = {};
+      for (const w of workoutsData) {
+        titles[w.id] = w.title;
       }
+      setWorkoutTitles(titles);
 
       setLoading(false);
     })();
@@ -93,7 +82,7 @@ export default function ProgressPage() {
           </p>
           <button
             type="button"
-            onClick={() => router.push('/workouts')}
+            onClick={() => router.push(workoutsPath('/workouts'))}
             className="text-indigo-500 text-sm hover:underline"
           >
             Browse workouts

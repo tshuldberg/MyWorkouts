@@ -1,4 +1,4 @@
-export { Button } from './button.js';
-export { Card } from './card.js';
-export { BodyMapPlaceholder } from './body-map-placeholder.js';
-export { ExerciseCard, type ExerciseCardProps } from './exercise-card.js';
+export { Button } from './button';
+export { Card } from './card';
+export { BodyMapPlaceholder } from './body-map-placeholder';
+export { ExerciseCard, type ExerciseCardProps } from './exercise-card';

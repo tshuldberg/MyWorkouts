@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import type { WorkoutPlan } from '@myworkouts/shared';
 import { getPlanProgress } from '@myworkouts/shared';
-import { createClient } from '@/lib/supabase/client';
+import { fetchWorkoutPlans } from '../../lib/actions';
 
 export default function PlansPage() {
   const router = useRouter();
@@ -14,39 +14,9 @@ export default function PlansPage() {
 
   useEffect(() => {
     (async () => {
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        setLoading(false);
-        return;
-      }
-
-      // Check if user has any plans (either as coach or as client)
-      const { data: coachPlans } = await supabase
-        .from('workout_plans')
-        .select('*')
-        .eq('coach_id', user.id)
-        .order('created_at', { ascending: false });
-
-      if (coachPlans && coachPlans.length > 0) {
-        setIsCoach(true);
-        setPlans(coachPlans as WorkoutPlan[]);
-      } else {
-        // Fetch plans from user's coach
-        const { data: profile } = await (supabase as any)
-          .from('users')
-          .select('coach_id')
-          .eq('id', user.id)
-          .single();
-        if ((profile as any)?.coach_id) {
-          const { data: clientPlans } = await supabase
-            .from('workout_plans')
-            .select('*')
-            .eq('coach_id', (profile as any).coach_id)
-            .order('created_at', { ascending: false });
-          if (clientPlans) setPlans(clientPlans as WorkoutPlan[]);
-        }
-      }
+      const result = await fetchWorkoutPlans();
+      setPlans(result.plans);
+      setIsCoach(result.isCoach);
       setLoading(false);
     })();
   }, []);

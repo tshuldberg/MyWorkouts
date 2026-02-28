@@ -1,4 +1,4 @@
-import type { WorkoutPlan, WorkoutPlanWeek, WorkoutPlanDay } from '../types/index.js';
+import type { WorkoutPlan, WorkoutPlanWeek, WorkoutPlanDay } from '../types/index';
 
 export interface PlanBuilderState {
   title: string;

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { createClient } from '@/lib/supabase/client';
+import { updateProfile } from '../../lib/actions';
 
 interface ProfileFormProps {
   email: string;
@@ -22,29 +22,13 @@ export function ProfileForm({ email, displayName: initialName, avatarUrl: initia
     setSaving(true);
     setMessage(null);
 
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      setMessage('Error: Please sign in again to update your profile.');
-      setSaving(false);
-      return;
-    }
+    await updateProfile({
+      display_name: displayName || null,
+      avatar_url: avatarUrl || null,
+    });
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error } = await (supabase as any)
-      .from('users')
-      .update({
-        display_name: displayName || null,
-        avatar_url: avatarUrl || null,
-      })
-      .eq('id', user.id);
-
-    if (error) {
-      setMessage(`Error: ${error.message}`);
-    } else {
-      setMessage('Profile updated');
-      router.refresh();
-    }
+    setMessage('Profile updated');
+    router.refresh();
     setSaving(false);
   }
 

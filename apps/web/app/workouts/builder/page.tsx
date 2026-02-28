@@ -9,9 +9,11 @@ import {
   estimateDuration,
   toWorkoutPayload,
 } from '@myworkouts/shared';
-import { useWorkoutBuilderStore } from '@/lib/workout-builder-store';
-import { useExerciseStore } from '@/lib/exercise-store';
-import { createClient } from '@/lib/supabase/client';
+import { useWorkoutBuilderStore } from '../../../lib/workout-builder-store';
+import { useExerciseStore } from '../../../lib/exercise-store';
+import { fetchWorkoutById, saveWorkout } from '../../../lib/actions';
+import { workoutsPath } from '../../../lib/routes';
+import { loadExercisesWithFallback } from '../../../lib/exercises';
 
 function formatDuration(seconds: number): string {
   if (seconds < 60) return `${seconds}s`;
@@ -44,15 +46,23 @@ function WorkoutBuilderPage() {
 
   // Load exercises if not already loaded
   useEffect(() => {
-    if (exerciseStore.exercises.length > 0) return;
-    const supabase = createClient();
-    supabase
-      .from('exercises')
-      .select('*')
-      .order('name')
-      .then(({ data }) => {
-        if (data) exerciseStore.setExercises(data as Exercise[]);
-      });
+    let active = true;
+
+    if (exerciseStore.exercises.length > 0) {
+      return () => {
+        active = false;
+      };
+    }
+
+    void (async () => {
+      const exercises = await loadExercisesWithFallback();
+      if (!active) return;
+      exerciseStore.setExercises(exercises);
+    })();
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   // Load workout for editing
@@ -61,21 +71,15 @@ function WorkoutBuilderPage() {
       builder.reset();
       return;
     }
-    const supabase = createClient();
-    supabase
-      .from('workouts')
-      .select('*')
-      .eq('id', editId)
-      .single()
-      .then(({ data }) => {
-        if (!data) return;
-        const workout = data as Workout;
-        const names: Record<string, string> = {};
-        for (const e of exerciseStore.exercises) {
-          names[e.id] = e.name;
-        }
-        builder.loadWorkout(workout, names);
-      });
+    void (async () => {
+      const workout = await fetchWorkoutById(editId);
+      if (!workout) return;
+      const names: Record<string, string> = {};
+      for (const e of exerciseStore.exercises) {
+        names[e.id] = e.name;
+      }
+      builder.loadWorkout(workout, names);
+    })();
   }, [editId, exerciseStore.exercises.length]);
 
   // Optionally inject a specific exercise when arriving from exercise detail.
@@ -111,26 +115,14 @@ function WorkoutBuilderPage() {
   const handleSave = useCallback(async () => {
     if (!builder.title.trim()) return;
     setSaving(true);
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      setSaving(false);
-      return;
-    }
 
-    const payload = toWorkoutPayload(builder, user.id);
+    const payload = toWorkoutPayload(builder, 'local-user');
 
-    if (builder.isEditing && builder.editingWorkoutId) {
-      await (supabase.from('workouts') as any)
-        .update(payload)
-        .eq('id', builder.editingWorkoutId);
-    } else {
-      await (supabase.from('workouts') as any).insert(payload);
-    }
+    await saveWorkout(payload as Record<string, unknown>, builder.isEditing ? builder.editingWorkoutId : null);
 
     builder.reset();
     setSaving(false);
-    router.push('/workouts');
+    router.push(workoutsPath('/workouts'));
   }, [builder, router]);
 
   return (
@@ -142,7 +134,7 @@ function WorkoutBuilderPage() {
         </h1>
         <button
           type="button"
-          onClick={() => { builder.reset(); router.push('/workouts'); }}
+          onClick={() => { builder.reset(); router.push(workoutsPath('/workouts')); }}
           className="text-sm text-gray-500 hover:text-gray-700"
         >
           Cancel

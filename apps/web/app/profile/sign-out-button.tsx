@@ -1,14 +1,13 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { createClient } from '@/lib/supabase/client';
 
 export function SignOutButton() {
   const router = useRouter();
 
-  async function handleSignOut() {
-    const supabase = createClient();
-    await supabase.auth.signOut();
+  function handleSignOut() {
+    // In local SQLite mode there's no real auth session to clear.
+    // Navigate to home as a no-op sign-out.
     router.push('/');
     router.refresh();
   }

@@ -8,8 +8,8 @@ import {
   DAY_NAMES,
   toPlanPayload,
 } from '@myworkouts/shared';
-import { usePlanBuilderStore } from '@/lib/plan-builder-store';
-import { createClient } from '@/lib/supabase/client';
+import { usePlanBuilderStore } from '../../../lib/plan-builder-store';
+import { fetchAllWorkouts, fetchWorkoutPlanById, savePlan } from '../../../lib/actions';
 
 export default function PlanBuilderPageWrapper() {
   return (
@@ -33,12 +33,8 @@ function PlanBuilderPage() {
   // Load available workouts
   useEffect(() => {
     (async () => {
-      const supabase = createClient();
-      const { data } = await supabase
-        .from('workouts')
-        .select('*')
-        .order('title');
-      if (data) setWorkouts(data as Workout[]);
+      const data = await fetchAllWorkouts();
+      setWorkouts(data);
     })();
   }, []);
 
@@ -49,13 +45,8 @@ function PlanBuilderPage() {
       return;
     }
     (async () => {
-      const supabase = createClient();
-      const { data } = await supabase
-        .from('workout_plans')
-        .select('*')
-        .eq('id', editId)
-        .single();
-      if (data) builder.loadPlan(data as WorkoutPlan);
+      const data = await fetchWorkoutPlanById(editId);
+      if (data) builder.loadPlan(data);
     })();
   }, [editId]);
 
@@ -74,22 +65,13 @@ function PlanBuilderPage() {
   const handleSave = useCallback(async () => {
     if (!builder.title.trim()) return;
     setSaving(true);
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      setSaving(false);
-      return;
-    }
 
-    const payload = toPlanPayload(builder, user.id);
+    const payload = toPlanPayload(builder, 'local-user');
 
-    if (builder.isEditing && builder.editingPlanId) {
-      await (supabase.from('workout_plans') as any)
-        .update(payload)
-        .eq('id', builder.editingPlanId);
-    } else {
-      await (supabase.from('workout_plans') as any).insert(payload);
-    }
+    await savePlan(
+      payload as Record<string, unknown>,
+      builder.isEditing ? builder.editingPlanId : null,
+    );
 
     builder.reset();
     setSaving(false);

@@ -3,7 +3,8 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import type { Workout } from '@myworkouts/shared';
-import { createClient } from '@/lib/supabase/client';
+import { fetchWorkouts } from '../../lib/actions';
+import { workoutsPath } from '../../lib/routes';
 
 function formatDuration(seconds: number): string {
   if (seconds < 60) return `${seconds}s`;
@@ -16,25 +17,15 @@ export default function WorkoutsPage() {
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchWorkouts = useCallback(async () => {
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      setLoading(false);
-      return;
-    }
-    const { data } = await supabase
-      .from('workouts')
-      .select('*')
-      .eq('creator_id', user.id)
-      .order('created_at', { ascending: false });
-    if (data) setWorkouts(data as Workout[]);
+  const load = useCallback(async () => {
+    const data = await fetchWorkouts();
+    setWorkouts(data);
     setLoading(false);
   }, []);
 
   useEffect(() => {
-    fetchWorkouts();
-  }, [fetchWorkouts]);
+    load();
+  }, [load]);
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-6">
@@ -42,7 +33,7 @@ export default function WorkoutsPage() {
         <h1 className="text-3xl font-bold text-gray-900">Workouts</h1>
         <button
           type="button"
-          onClick={() => router.push('/workouts/builder')}
+          onClick={() => router.push(workoutsPath('/workouts/builder'))}
           className="rounded-lg bg-indigo-500 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-600 transition-colors"
         >
           + New Workout
@@ -58,7 +49,7 @@ export default function WorkoutsPage() {
           <p className="text-gray-500 mb-4">No custom workouts yet.</p>
           <button
             type="button"
-            onClick={() => router.push('/workouts/builder')}
+            onClick={() => router.push(workoutsPath('/workouts/builder'))}
             className="text-indigo-500 hover:underline"
           >
             Create your first workout
@@ -86,14 +77,14 @@ export default function WorkoutsPage() {
             <div className="flex gap-2 ml-4">
               <button
                 type="button"
-                onClick={() => router.push(`/workout/${w.id}`)}
+                onClick={() => router.push(workoutsPath(`/workout/${w.id}`))}
                 className="rounded-lg bg-indigo-500 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-600 transition-colors"
               >
                 Start
               </button>
               <button
                 type="button"
-                onClick={() => router.push(`/workouts/builder?edit=${w.id}`)}
+                onClick={() => router.push(workoutsPath(`/workouts/builder?edit=${w.id}`))}
                 className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50 transition-colors"
               >
                 Edit

@@ -1,4 +1,4 @@
-import type { Exercise, Category, MuscleGroup } from '../types/index.js';
+import type { Exercise, Category, MuscleGroup } from '../types/index';
 
 export interface ExerciseState {
   exercises: Exercise[];

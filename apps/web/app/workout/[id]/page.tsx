@@ -10,12 +10,19 @@ import {
   formatTime,
   SPEED_OPTIONS,
 } from '@myworkouts/shared';
-import { usePlayerStore } from '@/lib/player-store';
-import { useSubscriptionStore } from '@/lib/subscription-store';
-import { createClient } from '@/lib/supabase/client';
-import { createWebSpeechAdapter, type SpeechRecognitionAdapter } from '@/lib/speech-recognition';
-import { createCameraRecorder, type CameraRecorderAdapter } from '@/lib/camera-recorder';
-import { uploadRecording } from '@/lib/recording-upload';
+import { usePlayerStore } from '../../../lib/player-store';
+import { useSubscriptionStore } from '../../../lib/subscription-store';
+import {
+  fetchWorkoutById,
+  fetchExercisesByIds,
+  startWorkoutSession,
+  finishWorkoutSession,
+  fetchSubscriptionStatus,
+} from '../../../lib/actions';
+import { createWebSpeechAdapter, type SpeechRecognitionAdapter } from '../../../lib/speech-recognition';
+import { createCameraRecorder, type CameraRecorderAdapter } from '../../../lib/camera-recorder';
+import { uploadRecording } from '../../../lib/recording-upload';
+import { workoutsPath } from '../../../lib/routes';
 
 export default function WorkoutPlayerPage() {
   const { id } = useParams<{ id: string }>();
@@ -47,43 +54,28 @@ export default function WorkoutPlayerPage() {
 
   // Load workout and its exercises
   useEffect(() => {
-    const supabase = createClient();
-    supabase
-      .from('workouts')
-      .select('*')
-      .eq('id', id)
-      .single()
-      .then(({ data }) => {
-        if (!data) {
-          setLoading(false);
-          return;
-        }
-        const w = data as Workout;
-        setWorkout(w);
+    void (async () => {
+      const w = await fetchWorkoutById(id);
+      if (!w) {
+        setLoading(false);
+        return;
+      }
+      setWorkout(w);
 
-        // Load exercise details for display
-        const exerciseIds = w.exercises.map((e) => e.exercise_id);
-        if (exerciseIds.length > 0) {
-          supabase
-            .from('exercises')
-            .select('*')
-            .in('id', exerciseIds)
-            .then(({ data: exData }) => {
-              const map: Record<string, Exercise> = {};
-              if (exData) {
-                for (const e of exData as Exercise[]) {
-                  map[e.id] = e;
-                }
-              }
-              setExerciseMap(map);
-              init(w.exercises);
-              setLoading(false);
-            });
-        } else {
-          init(w.exercises);
-          setLoading(false);
+      // Load exercise details for display
+      const exerciseIds = w.exercises.map((e) => e.exercise_id);
+      if (exerciseIds.length > 0) {
+        const exList = await fetchExercisesByIds(exerciseIds);
+        const map: Record<string, Exercise> = {};
+        for (const e of exList) {
+          map[e.id] = e;
         }
-      });
+        setExerciseMap(map);
+      }
+
+      init(w.exercises);
+      setLoading(false);
+    })();
 
     return () => {
       if (tickRef.current) clearInterval(tickRef.current);
@@ -93,27 +85,15 @@ export default function WorkoutPlayerPage() {
   // Load subscription status
   const subStore = useSubscriptionStore();
   useEffect(() => {
-    const supabase = createClient();
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user) {
-        subStore.setLoading(false);
-        return;
+    void (async () => {
+      const sub = await fetchSubscriptionStatus();
+      if (sub.plan) {
+        subStore.setPlan(sub.plan as any);
+        subStore.setStatus(sub.status as any);
+        if (sub.expiresAt) subStore.setExpiresAt(sub.expiresAt);
       }
-      (supabase as any)
-        .from('subscriptions')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('status', 'active')
-        .single()
-        .then(({ data }: { data: any }) => {
-          if (data) {
-            subStore.setPlan(data.plan);
-            subStore.setStatus(data.status);
-            subStore.setExpiresAt(data.expires_at);
-          }
-          subStore.setLoading(false);
-        });
-    });
+      subStore.setLoading(false);
+    })();
   }, []);
 
   // Camera lifecycle
@@ -167,18 +147,14 @@ export default function WorkoutPlayerPage() {
       if (!sessionId || !currentExercise) return;
 
       setUploadingCount((c) => c + 1);
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        await uploadRecording(
-          blob,
-          user.id,
-          sessionId,
-          currentExercise.exercise_id,
-          recordingStartTime,
-          status.elapsedTime,
-        );
-      }
+      await uploadRecording(
+        blob,
+        'local-user',
+        sessionId,
+        currentExercise.exercise_id,
+        recordingStartTime,
+        status.elapsedTime,
+      );
       setUploadingCount((c) => c - 1);
     } else {
       // Start recording
@@ -300,39 +276,23 @@ export default function WorkoutPlayerPage() {
   // Create session at start so recordings can reference it
   useEffect(() => {
     if (status.state !== 'playing' || sessionId || !workout) return;
-    const supabase = createClient();
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user) return;
-      (supabase as any)
-        .from('workout_sessions')
-        .insert({
-          user_id: user.id,
-          workout_id: workout.id,
-        })
-        .select('id')
-        .single()
-        .then(({ data }: { data: any }) => {
-          if (data) setSessionId(data.id);
-        });
-    });
+    void (async () => {
+      const newSessionId = await startWorkoutSession(workout.id);
+      setSessionId(newSessionId);
+    })();
   }, [status.state, sessionId, workout]);
 
   // Update session on completion
   useEffect(() => {
     if (status.state !== 'completed' || !sessionId) return;
-    const supabase = createClient();
-    (supabase as any)
-      .from('workout_sessions')
-      .update({
-        exercises_completed: status.completed,
-        voice_commands_used: voiceCommandLog.map((c) => ({
-          command: c.command,
-          timestamp: c.time,
-          recognized: true,
-        })),
-        completed_at: new Date().toISOString(),
-      })
-      .eq('id', sessionId);
+    void finishWorkoutSession(sessionId, {
+      exercises_completed: status.completed,
+      voice_commands_used: voiceCommandLog.map((c) => ({
+        command: c.command,
+        timestamp: c.time,
+        recognized: true,
+      })),
+    });
   }, [status.state, sessionId, status.completed]);
 
   const handlePlayPause = useCallback(() => {
@@ -355,7 +315,7 @@ export default function WorkoutPlayerPage() {
         <p className="text-gray-500">Workout not found.</p>
         <button
           type="button"
-          onClick={() => router.push('/workouts')}
+          onClick={() => router.push(workoutsPath('/workouts'))}
           className="text-indigo-500 hover:underline"
         >
           Back to Workouts
@@ -395,7 +355,7 @@ export default function WorkoutPlayerPage() {
           {sessionId && isPremium && (
             <button
               type="button"
-              onClick={() => router.push('/recordings')}
+              onClick={() => router.push(workoutsPath('/recordings'))}
               className="rounded-lg border border-indigo-300 px-8 py-3 font-semibold text-indigo-600 hover:bg-indigo-50 transition-colors"
             >
               Review Recordings
@@ -403,7 +363,7 @@ export default function WorkoutPlayerPage() {
           )}
           <button
             type="button"
-            onClick={() => router.push('/workouts')}
+            onClick={() => router.push(workoutsPath('/workouts'))}
             className="rounded-lg bg-indigo-500 px-8 py-3 font-semibold text-white hover:bg-indigo-600 transition-colors"
           >
             Done

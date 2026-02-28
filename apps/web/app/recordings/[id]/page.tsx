@@ -4,8 +4,9 @@ import { useEffect, useState, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import type { FormRecording, Exercise, CoachFeedback } from '@myworkouts/shared';
 import { formatTime } from '@myworkouts/shared';
-import { createClient } from '@/lib/supabase/client';
-import { getRecordingUrl } from '@/lib/recording-upload';
+import { fetchFormRecordingById, fetchExerciseById } from '../../../lib/actions';
+import { getRecordingUrl } from '../../../lib/recording-upload';
+import { workoutsPath } from '../../../lib/routes';
 
 export default function RecordingReviewPage() {
   const { id } = useParams<{ id: string }>();
@@ -20,33 +21,19 @@ export default function RecordingReviewPage() {
 
   useEffect(() => {
     (async () => {
-      const supabase = createClient();
-
       // Load recording
-      const { data: recData } = await (supabase as any)
-        .from('form_recordings')
-        .select('*')
-        .eq('id', id)
-        .single();
-
-      if (!recData) {
+      const rec = await fetchFormRecordingById(id);
+      if (!rec) {
         setLoading(false);
         return;
       }
-
-      const rec = recData as FormRecording;
       setRecording(rec);
 
       // Load exercise info
-      const { data: exData } = await supabase
-        .from('exercises')
-        .select('*')
-        .eq('id', rec.exercise_id)
-        .single();
+      const ex = await fetchExerciseById(rec.exercise_id);
+      if (ex) setExercise(ex);
 
-      if (exData) setExercise(exData as Exercise);
-
-      // Get signed video URL
+      // Get video URL
       const url = await getRecordingUrl(rec.video_url);
       setVideoUrl(url);
 
@@ -81,7 +68,7 @@ export default function RecordingReviewPage() {
         <p className="text-gray-500">Recording not found.</p>
         <button
           type="button"
-          onClick={() => router.push('/recordings')}
+          onClick={() => router.push(workoutsPath('/recordings'))}
           className="text-indigo-500 hover:underline"
         >
           Back to Recordings
@@ -98,7 +85,7 @@ export default function RecordingReviewPage() {
       <div className="flex items-center justify-between mb-6">
         <button
           type="button"
-          onClick={() => router.push('/recordings')}
+          onClick={() => router.push(workoutsPath('/recordings'))}
           className="text-sm text-gray-500 hover:text-gray-700"
         >
           &#x25C0; Back to Recordings

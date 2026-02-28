@@ -4,4 +4,6 @@ export {
   type ExerciseState,
   type ExerciseActions,
   type ExerciseStore,
-} from './store.js';
+} from './store';
+
+export { DEFAULT_EXERCISES, getDefaultExercises } from './catalog';

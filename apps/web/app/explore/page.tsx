@@ -3,9 +3,10 @@
 import { useEffect, useMemo, useCallback, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Category, type Exercise, type MuscleGroup, getFilteredExercises, muscleGroupLabel } from '@myworkouts/shared';
-import { useExerciseStore } from '@/lib/exercise-store';
+import { useExerciseStore } from '../../lib/exercise-store';
 import { BodyMapWeb } from './body-map-web';
-import { createClient } from '@/lib/supabase/client';
+import { workoutsPath } from '../../lib/routes';
+import { loadExercisesWithFallback } from '../../lib/exercises';
 
 const CATEGORIES = [
   { value: null, label: 'All' },
@@ -50,6 +51,7 @@ export default function ExplorePage() {
   const store = useExerciseStore();
   const searchTimeout = useRef<NodeJS.Timeout | null>(null);
   const [searchInput, setSearchInput] = useState('');
+  const [loading, setLoading] = useState(store.exercises.length === 0);
 
   const filtered = useMemo(() => getFilteredExercises(store), [
     store.exercises,
@@ -58,17 +60,27 @@ export default function ExplorePage() {
     store.searchQuery,
   ]);
 
-  // Load exercises from Supabase on mount
+  // Load exercises on mount
   useEffect(() => {
-    if (store.exercises.length > 0) return;
-    const supabase = createClient();
-    supabase
-      .from('exercises')
-      .select('*')
-      .order('name')
-      .then(({ data }) => {
-        if (data) store.setExercises(data as Exercise[]);
-      });
+    let active = true;
+
+    if (store.exercises.length > 0) {
+      setLoading(false);
+      return () => {
+        active = false;
+      };
+    }
+
+    void (async () => {
+      const exercises = await loadExercisesWithFallback();
+      if (!active) return;
+      store.setExercises(exercises);
+      setLoading(false);
+    })();
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   // Debounced search
@@ -165,19 +177,19 @@ export default function ExplorePage() {
 
           {/* Exercise List */}
           <div className="space-y-2">
-            {filtered.length === 0 && store.exercises.length > 0 && (
+            {!loading && filtered.length === 0 && (
               <p className="py-8 text-center text-gray-400">
                 No exercises match your filters.
               </p>
             )}
-            {store.exercises.length === 0 && (
+            {loading && (
               <p className="py-8 text-center text-gray-400">Loading exercises...</p>
             )}
             {filtered.map((exercise) => (
               <button
                 key={exercise.id}
                 type="button"
-                onClick={() => router.push(`/exercise/${exercise.id}`)}
+                onClick={() => router.push(workoutsPath(`/exercise/${exercise.id}`))}
                 className="flex w-full items-center gap-3 rounded-xl border border-gray-200 bg-white p-3 text-left hover:border-indigo-200 hover:shadow-sm transition-all"
               >
                 {/* Thumbnail */}

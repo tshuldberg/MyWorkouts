@@ -2,7 +2,7 @@ import type {
   WorkoutPlan,
   WorkoutPlanWeek,
   WorkoutPlanDay,
-} from '../types/index.js';
+} from '../types/index';
 
 // ── Plan Consumer Store ──
 // Used by clients (non-coaches) to browse, follow, and track plans.

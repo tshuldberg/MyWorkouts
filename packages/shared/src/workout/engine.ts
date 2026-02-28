@@ -1,4 +1,4 @@
-import type { WorkoutExercise, CompletedExercise, Exercise } from '../types/index.js';
+import type { WorkoutExercise, CompletedExercise, Exercise } from '../types/index';
 
 // ── State Machine ──
 

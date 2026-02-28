@@ -3,7 +3,7 @@ import type {
   CompletedExercise,
   MuscleGroup,
   Exercise,
-} from '../types/index.js';
+} from '../types/index';
 
 // ── Streak Calculation ──
 

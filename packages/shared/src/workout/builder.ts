@@ -1,4 +1,4 @@
-import type { Exercise, Workout, WorkoutExercise, Difficulty } from '../types/index.js';
+import type { Exercise, Workout, WorkoutExercise, Difficulty } from '../types/index';
 
 export interface WorkoutBuilderExercise extends WorkoutExercise {
   name: string;

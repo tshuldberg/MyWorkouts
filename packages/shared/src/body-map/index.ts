@@ -1,4 +1,4 @@
-import { MuscleGroup } from '../types/index.js';
+import { MuscleGroup } from '../types/index';
 
 export interface MuscleGroupDefinition {
   id: MuscleGroup;

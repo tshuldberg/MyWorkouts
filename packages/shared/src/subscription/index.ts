@@ -1,4 +1,4 @@
-import { SubscriptionPlan, SubscriptionStatus } from '../types/index.js';
+import { SubscriptionPlan, SubscriptionStatus } from '../types/index';
 
 export interface PricingTier {
   plan: SubscriptionPlan;

@@ -1,4 +1,4 @@
-import type { WorkoutExercise, CompletedExercise } from '../types/index.js';
+import type { WorkoutExercise, CompletedExercise } from '../types/index';
 
 export {
   createWorkoutBuilderStore,
@@ -8,7 +8,7 @@ export {
   type WorkoutBuilderState,
   type WorkoutBuilderActions,
   type WorkoutBuilderStore,
-} from './builder.js';
+} from './builder';
 
 export {
   createPlayerStatus,
@@ -19,7 +19,7 @@ export {
   type PlayerState,
   type PlayerStatus,
   type PlayerAction,
-} from './engine.js';
+} from './engine';
 
 export {
   createPlanConsumerStore,
@@ -30,7 +30,7 @@ export {
   type PlanConsumerState,
   type PlanConsumerActions,
   type PlanConsumerStore,
-} from './plans.js';
+} from './plans';
 
 export type WorkoutPlayerState = 'idle' | 'playing' | 'paused' | 'rest' | 'completed';
 

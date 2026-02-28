@@ -11,7 +11,14 @@ import {
   getCurrentPlanPosition,
   SubscriptionPlan,
 } from '@myworkouts/shared';
-import { createClient } from '@/lib/supabase/client';
+import {
+  fetchWorkoutPlanById,
+  fetchWorkoutTitles,
+  fetchPlanSubscription,
+  followPlan,
+  unfollowPlan,
+  fetchSubscriptionStatus,
+} from '../../../lib/actions';
 
 export default function PlanDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -26,61 +33,33 @@ export default function PlanDetailPage() {
 
   useEffect(() => {
     (async () => {
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-
-      // Check subscription tier
-      if (user) {
-        const { data: profile } = await (supabase as any)
-          .from('users')
-          .select('subscription_tier')
-          .eq('id', user.id)
-          .single();
-        if ((profile as any)?.subscription_tier === SubscriptionPlan.Premium) {
-          setIsPremiumUser(true);
-        }
-
-        // Check if user is already following this plan
-        const { data: sub } = await (supabase as any)
-          .from('plan_subscriptions')
-          .select('*')
-          .eq('user_id', user.id)
-          .eq('plan_id', id)
-          .maybeSingle();
-        if (sub) {
-          setFollowing(true);
-          setFollowStartDate((sub as any).started_at);
-        }
+      // Check subscription tier (local mode: always premium)
+      const subStatus = await fetchSubscriptionStatus();
+      if (subStatus.plan === 'premium') {
+        setIsPremiumUser(true);
       }
 
-      const { data } = await supabase
-        .from('workout_plans')
-        .select('*')
-        .eq('id', id)
-        .single();
+      // Check if user is already following this plan
+      const sub = await fetchPlanSubscription(id);
+      if (sub.following) {
+        setFollowing(true);
+        setFollowStartDate(sub.startedAt);
+      }
+
+      const data = await fetchWorkoutPlanById(id);
       if (data) {
-        const p = data as WorkoutPlan;
-        setPlan(p);
+        setPlan(data);
 
         // Fetch workout names for all referenced workout IDs
         const workoutIds = new Set<string>();
-        for (const week of p.weeks) {
+        for (const week of data.weeks) {
           for (const day of week.days) {
             if (day.workout_id) workoutIds.add(day.workout_id);
           }
         }
         if (workoutIds.size > 0) {
-          const { data: workouts } = await supabase
-            .from('workouts')
-            .select('id, title')
-            .in('id', Array.from(workoutIds));
-          if (workouts) {
-            const names: Record<string, string> = {};
-            for (const w of workouts as Workout[]) {
-              names[w.id] = w.title;
-            }
-            setWorkoutNames(names);
-          }
+          const names = await fetchWorkoutTitles(Array.from(workoutIds));
+          setWorkoutNames(names);
         }
       }
       setLoading(false);
@@ -89,20 +68,7 @@ export default function PlanDetailPage() {
 
   const handleFollowPlan = useCallback(async () => {
     setFollowSaving(true);
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      setFollowSaving(false);
-      return;
-    }
-
-    const startDate = new Date().toISOString();
-    await (supabase as any).from('plan_subscriptions').insert({
-      user_id: user.id,
-      plan_id: id,
-      started_at: startDate,
-    });
-
+    const startDate = await followPlan(id);
     setFollowing(true);
     setFollowStartDate(startDate);
     setFollowSaving(false);
@@ -110,19 +76,7 @@ export default function PlanDetailPage() {
 
   const handleUnfollow = useCallback(async () => {
     setFollowSaving(true);
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      setFollowSaving(false);
-      return;
-    }
-
-    await (supabase as any)
-      .from('plan_subscriptions')
-      .delete()
-      .eq('user_id', user.id)
-      .eq('plan_id', id);
-
+    await unfollowPlan(id);
     setFollowing(false);
     setFollowStartDate(null);
     setFollowSaving(false);

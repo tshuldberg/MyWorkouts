@@ -3,7 +3,6 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { createClient } from '@/lib/supabase/client';
 
 export default function SignInPage() {
   const router = useRouter();
@@ -17,25 +16,15 @@ export default function SignInPage() {
     setError(null);
     setLoading(true);
 
-    const supabase = createClient();
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-
-    if (error) {
-      setError(error.message);
-      setLoading(false);
-      return;
-    }
-
+    // In local SQLite mode, sign-in always succeeds (single local-user)
     router.push('/');
     router.refresh();
   }
 
-  async function handleOAuthSignIn(provider: 'google' | 'apple') {
-    const supabase = createClient();
-    await supabase.auth.signInWithOAuth({
-      provider,
-      options: { redirectTo: `${window.location.origin}/auth/callback` },
-    });
+  async function handleOAuthSignIn(_provider: 'google' | 'apple') {
+    // In local mode, OAuth is not available. Just redirect home.
+    router.push('/');
+    router.refresh();
   }
 
   return (
