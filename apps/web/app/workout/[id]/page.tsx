@@ -1,14 +1,16 @@
 'use client';
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import {
   type Exercise,
   type Workout,
   type VoiceCommand,
+  type WeightUnit,
   playerProgress,
   formatTime,
   SPEED_OPTIONS,
+  calculate1RM,
 } from '@myworkouts/shared';
 import { usePlayerStore } from '../../../lib/player-store';
 import { useSubscriptionStore } from '../../../lib/subscription-store';
@@ -23,6 +25,53 @@ import { createWebSpeechAdapter, type SpeechRecognitionAdapter } from '../../../
 import { createCameraRecorder, type CameraRecorderAdapter } from '../../../lib/camera-recorder';
 import { uploadRecording } from '../../../lib/recording-upload';
 import { workoutsPath } from '../../../lib/routes';
+
+// ── Rest Timer Presets ──
+const REST_PRESETS = [
+  { label: 'Hypertrophy', range: '60-90s', value: 75 },
+  { label: 'Strength', range: '120-180s', value: 150 },
+  { label: 'Power', range: '180-300s', value: 240 },
+];
+
+function getRestTimerPreference(): number {
+  if (typeof window === 'undefined') return 90;
+  const saved = localStorage.getItem('rest_timer_seconds');
+  return saved ? parseInt(saved, 10) : 90;
+}
+
+function getPreferredWeightUnit(): WeightUnit {
+  if (typeof window === 'undefined') return 'lbs';
+  return (localStorage.getItem('preferred_weight_unit') as WeightUnit) || 'lbs';
+}
+
+// ── Audio Alert ──
+function playRestCompleteBeep() {
+  try {
+    const ctx = new AudioContext();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.frequency.value = 880;
+    osc.type = 'sine';
+    gain.gain.value = 0.3;
+    osc.start();
+    osc.stop(ctx.currentTime + 0.2);
+    setTimeout(() => {
+      const osc2 = ctx.createOscillator();
+      const gain2 = ctx.createGain();
+      osc2.connect(gain2);
+      gain2.connect(ctx.destination);
+      osc2.frequency.value = 1100;
+      osc2.type = 'sine';
+      gain2.gain.value = 0.3;
+      osc2.start();
+      osc2.stop(ctx.currentTime + 0.3);
+    }, 250);
+  } catch {
+    // Audio not available
+  }
+}
 
 export default function WorkoutPlayerPage() {
   const { id } = useParams<{ id: string }>();
@@ -51,6 +100,24 @@ export default function WorkoutPlayerPage() {
   const [uploadingCount, setUploadingCount] = useState(0);
   const cameraRef = useRef<CameraRecorderAdapter | null>(null);
   const previewVideoRef = useRef<HTMLVideoElement | null>(null);
+
+  // Weight tracking state
+  const [weightUnit, setWeightUnit] = useState<WeightUnit>('lbs');
+  const [setWeights, setSetWeights] = useState<Record<string, number>>({});
+  const [setReps, setSetReps] = useState<Record<string, number>>({});
+  const [exercisePRs, setExercisePRs] = useState<Record<string, number>>({});
+  const [prHits, setPrHits] = useState<Set<string>>(new Set());
+
+  // Rest timer state
+  const [defaultRestSeconds, setDefaultRestSeconds] = useState(90);
+  const [showRestSettings, setShowRestSettings] = useState(false);
+  const restAlertPlayedRef = useRef(false);
+
+  // Load preferences
+  useEffect(() => {
+    setWeightUnit(getPreferredWeightUnit());
+    setDefaultRestSeconds(getRestTimerPreference());
+  }, []);
 
   // Load workout and its exercises
   useEffect(() => {
@@ -135,6 +202,79 @@ export default function WorkoutPlayerPage() {
   const currentDetail = currentExercise ? exerciseMap[currentExercise.exercise_id] : null;
   const progress = playerProgress(status);
 
+  // Current weight key for tracking
+  const currentWeightKey = currentExercise
+    ? `${currentExercise.exercise_id}-${status.currentSet}`
+    : '';
+
+  // Get current set weight (default from exercise definition or previous set)
+  const currentWeight = useMemo(() => {
+    if (!currentExercise) return 0;
+    const explicit = setWeights[currentWeightKey];
+    if (explicit !== undefined) return explicit;
+    // Fallback to exercise-level weight
+    return currentExercise.weight ?? 0;
+  }, [currentExercise, currentWeightKey, setWeights]);
+
+  // Get current reps target
+  const currentRepsTarget = useMemo(() => {
+    if (!currentExercise) return 0;
+    return currentExercise.reps ?? 0;
+  }, [currentExercise]);
+
+  // Calculate 1RM for current weight and reps
+  const current1RM = useMemo(() => {
+    if (currentWeight <= 0 || currentRepsTarget <= 0) return 0;
+    return calculate1RM(currentWeight, currentRepsTarget);
+  }, [currentWeight, currentRepsTarget]);
+
+  // Check if current exercise is in a superset group
+  const currentGroupInfo = useMemo(() => {
+    if (!currentExercise?.setGroupId) return null;
+    const groupId = currentExercise.setGroupId;
+    const groupExercises = status.exercises.filter((e) => e.setGroupId === groupId);
+    const currentIndex = groupExercises.findIndex(
+      (e) => e.exercise_id === currentExercise.exercise_id
+    );
+    return {
+      groupId,
+      exercises: groupExercises,
+      currentIndex,
+      total: groupExercises.length,
+      setType: currentExercise.setType ?? 'superset',
+    };
+  }, [currentExercise, status.exercises]);
+
+  // Drop set weight suggestion
+  const dropSetSuggestion = useMemo(() => {
+    if (!currentExercise || currentExercise.setType !== 'dropset') return null;
+    if (status.currentSet <= 1) return null;
+    const prevKey = `${currentExercise.exercise_id}-${status.currentSet - 1}`;
+    const prevWeight = setWeights[prevKey] ?? currentExercise.weight ?? 0;
+    if (prevWeight <= 0) return null;
+    // Suggest 10-20% less (use 15% as middle ground)
+    return Math.round(prevWeight * 0.85);
+  }, [currentExercise, status.currentSet, setWeights]);
+
+  // Pyramid set weight target
+  const pyramidTarget = useMemo(() => {
+    if (!currentExercise || currentExercise.setType !== 'pyramid') return null;
+    const baseWeight = currentExercise.weight ?? 0;
+    if (baseWeight <= 0) return null;
+    const totalSets = currentExercise.sets;
+    const midpoint = Math.ceil(totalSets / 2);
+    const currentSet = status.currentSet;
+    if (currentSet <= midpoint) {
+      // Ascending: base + increment per set
+      const increment = baseWeight * 0.1;
+      return Math.round(baseWeight + (currentSet - 1) * increment);
+    }
+    // Descending
+    const setsFromEnd = totalSets - currentSet;
+    const increment = baseWeight * 0.1;
+    return Math.round(baseWeight + setsFromEnd * increment);
+  }, [currentExercise, status.currentSet]);
+
   // Toggle recording
   const toggleRecording = useCallback(async () => {
     if (!cameraRef.current) return;
@@ -170,6 +310,17 @@ export default function WorkoutPlayerPage() {
       setCameraEnabled(false);
     }
   }, [status.state]);
+
+  // Play audio alert when rest timer hits 0
+  useEffect(() => {
+    if (status.state === 'rest' && status.restRemaining > 0) {
+      restAlertPlayedRef.current = false;
+    }
+    if (status.state === 'rest' && status.restRemaining <= 0 && !restAlertPlayedRef.current) {
+      restAlertPlayedRef.current = true;
+      playRestCompleteBeep();
+    }
+  }, [status.state, status.restRemaining]);
 
   // Tick loop: runs when state is 'playing' or 'rest'
   useEffect(() => {
@@ -301,6 +452,31 @@ export default function WorkoutPlayerPage() {
     else if (status.state === 'paused') dispatch({ type: 'RESUME' });
   }, [status.state, dispatch]);
 
+  // Handle completing a set with weight data
+  const handleCompleteSet = useCallback(() => {
+    // Save weight data for this set
+    if (currentExercise && currentWeight > 0) {
+      const reps = currentRepsTarget;
+      const estimated1RM = calculate1RM(currentWeight, reps);
+      const exerciseId = currentExercise.exercise_id;
+
+      // Check for PR
+      const previousBest = exercisePRs[exerciseId] ?? 0;
+      if (estimated1RM > previousBest) {
+        setExercisePRs((prev) => ({ ...prev, [exerciseId]: estimated1RM }));
+        setPrHits((prev) => new Set(prev).add(exerciseId));
+      }
+    }
+
+    dispatch({ type: 'COMPLETE_SET' });
+  }, [currentExercise, currentWeight, currentRepsTarget, exercisePRs, dispatch]);
+
+  const handleRestTimerChange = useCallback((seconds: number) => {
+    const clamped = Math.max(30, Math.min(300, seconds));
+    setDefaultRestSeconds(clamped);
+    localStorage.setItem('rest_timer_seconds', String(clamped));
+  }, []);
+
   if (loading) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center">
@@ -326,6 +502,13 @@ export default function WorkoutPlayerPage() {
 
   // ── Completed Screen ──
   if (status.state === 'completed') {
+    const totalVolume = status.completed.reduce((sum, c) => {
+      const w = c.weight ?? 0;
+      const r = c.reps_completed ?? 0;
+      const s = c.sets_completed;
+      return sum + w * r * s;
+    }, 0);
+
     return (
       <div className="mx-auto max-w-lg px-4 py-12 text-center">
         <div className="text-6xl mb-4">&#127942;</div>
@@ -350,6 +533,24 @@ export default function WorkoutPlayerPage() {
             <p className="text-xs text-gray-500">Duration</p>
           </div>
         </div>
+
+        {/* Volume and PRs */}
+        {totalVolume > 0 && (
+          <div className="mt-4 grid grid-cols-2 gap-4">
+            <div className="rounded-xl bg-purple-50 p-4">
+              <p className="text-2xl font-bold text-purple-600">
+                {totalVolume.toLocaleString()} {weightUnit}
+              </p>
+              <p className="text-xs text-gray-500">Total Volume</p>
+            </div>
+            {prHits.size > 0 && (
+              <div className="rounded-xl bg-yellow-50 p-4">
+                <p className="text-2xl font-bold text-yellow-600">{prHits.size}</p>
+                <p className="text-xs text-gray-500">PRs Hit!</p>
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="mt-8 flex flex-col gap-3">
           {sessionId && isPremium && (
@@ -480,6 +681,41 @@ export default function WorkoutPlayerPage() {
         </div>
       )}
 
+      {/* Superset Group Indicator */}
+      {currentGroupInfo && status.state !== 'rest' && (
+        <div className="mb-3 rounded-lg bg-purple-50 border border-purple-200 px-3 py-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold text-purple-600 uppercase tracking-wide">
+              {currentGroupInfo.setType === 'superset' ? 'Superset' :
+               currentGroupInfo.setType === 'dropset' ? 'Drop Set' :
+               currentGroupInfo.setType === 'giant' ? 'Giant Set' :
+               currentGroupInfo.setType === 'pyramid' ? 'Pyramid' : 'Group'}
+            </span>
+            <span className="text-xs text-purple-500">
+              {currentGroupInfo.currentIndex + 1} of {currentGroupInfo.total}
+            </span>
+          </div>
+          <div className="flex gap-1 mt-1.5">
+            {currentGroupInfo.exercises.map((ge, gi) => {
+              const name = exerciseMap[ge.exercise_id]?.name ?? 'Exercise';
+              const isActive = gi === currentGroupInfo.currentIndex;
+              return (
+                <div
+                  key={ge.exercise_id}
+                  className={`flex-1 rounded px-2 py-1 text-xs text-center truncate ${
+                    isActive
+                      ? 'bg-purple-500 text-white font-medium'
+                      : 'bg-purple-100 text-purple-400'
+                  }`}
+                >
+                  {name}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Progress Bar */}
       <div className="mb-6">
         <div className="h-2 w-full rounded-full bg-gray-200 overflow-hidden">
@@ -499,7 +735,54 @@ export default function WorkoutPlayerPage() {
 
       {/* Rest Overlay */}
       {status.state === 'rest' && (
-        <div className="mb-6 rounded-2xl bg-blue-50 border border-blue-200 p-8 text-center">
+        <div className="mb-6 rounded-2xl bg-blue-50 border border-blue-200 p-8 text-center relative">
+          {/* Rest Settings Gear */}
+          <button
+            type="button"
+            onClick={() => setShowRestSettings((v) => !v)}
+            className="absolute top-3 right-3 text-blue-400 hover:text-blue-600 p-1"
+            title="Rest timer settings"
+          >
+            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+          </button>
+
+          {/* Rest Settings Panel */}
+          {showRestSettings && (
+            <div className="absolute top-12 right-3 z-10 w-64 rounded-lg bg-white shadow-lg border border-gray-200 p-4 text-left">
+              <h4 className="text-sm font-semibold text-gray-700 mb-3">Rest Timer Settings</h4>
+              <div className="mb-3">
+                <label className="text-xs text-gray-500 block mb-1">Default rest (seconds)</label>
+                <input
+                  type="number"
+                  min={30}
+                  max={300}
+                  value={defaultRestSeconds}
+                  onChange={(e) => handleRestTimerChange(parseInt(e.target.value) || 90)}
+                  className="w-full rounded border border-gray-200 px-2 py-1.5 text-sm text-center"
+                />
+              </div>
+              <div className="space-y-1.5">
+                {REST_PRESETS.map((preset) => (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    onClick={() => handleRestTimerChange(preset.value)}
+                    className={`w-full rounded px-3 py-1.5 text-xs text-left transition-colors ${
+                      defaultRestSeconds === preset.value
+                        ? 'bg-blue-100 text-blue-700 font-medium'
+                        : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                    }`}
+                  >
+                    {preset.label} ({preset.range})
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <p className="text-sm font-medium text-blue-600 uppercase tracking-wide">Rest</p>
           <p className="text-5xl font-bold text-blue-700 mt-2">
             {formatTime(status.restRemaining)}
@@ -543,8 +826,118 @@ export default function WorkoutPlayerPage() {
           </div>
 
           {/* Exercise Info */}
-          <h3 className="text-2xl font-bold text-gray-900">{currentDetail.name}</h3>
+          <div className="flex items-center gap-2">
+            <h3 className="text-2xl font-bold text-gray-900">{currentDetail.name}</h3>
+            {/* PR Badge */}
+            {prHits.has(currentExercise!.exercise_id) && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-yellow-100 px-2.5 py-0.5 text-xs font-semibold text-yellow-700">
+                &#9733; PR
+              </span>
+            )}
+          </div>
           <p className="mt-1 text-sm text-gray-500">{currentDetail.description}</p>
+
+          {/* Weight Input */}
+          <div className="mt-4 rounded-xl bg-gray-50 border border-gray-200 p-4">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-gray-700">Weight</span>
+              {current1RM > 0 && (
+                <span className="text-xs text-gray-500">
+                  Est. 1RM: <span className="font-semibold text-gray-700">{current1RM} {weightUnit}</span>
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 flex-1">
+                <input
+                  type="number"
+                  min={0}
+                  step={2.5}
+                  value={setWeights[currentWeightKey] ?? currentWeight || ''}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value);
+                    setSetWeights((prev) => ({
+                      ...prev,
+                      [currentWeightKey]: isNaN(val) ? 0 : val,
+                    }));
+                  }}
+                  placeholder="0"
+                  className="w-24 rounded-lg border border-gray-200 px-3 py-2 text-center text-lg font-semibold text-gray-900"
+                />
+                <span className="text-sm text-gray-500 font-medium">{weightUnit}</span>
+              </div>
+
+              {/* Quick adjust buttons */}
+              <div className="flex gap-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const curr = setWeights[currentWeightKey] ?? currentWeight;
+                    const step = weightUnit === 'lbs' ? 5 : 2.5;
+                    setSetWeights((prev) => ({
+                      ...prev,
+                      [currentWeightKey]: Math.max(0, curr - step),
+                    }));
+                  }}
+                  className="rounded-lg bg-gray-200 px-2.5 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-300"
+                >
+                  -{weightUnit === 'lbs' ? '5' : '2.5'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const curr = setWeights[currentWeightKey] ?? currentWeight;
+                    const step = weightUnit === 'lbs' ? 5 : 2.5;
+                    setSetWeights((prev) => ({
+                      ...prev,
+                      [currentWeightKey]: curr + step,
+                    }));
+                  }}
+                  className="rounded-lg bg-gray-200 px-2.5 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-300"
+                >
+                  +{weightUnit === 'lbs' ? '5' : '2.5'}
+                </button>
+              </div>
+            </div>
+
+            {/* Drop set suggestion */}
+            {dropSetSuggestion !== null && (
+              <div className="mt-2 flex items-center gap-2">
+                <span className="text-xs text-amber-600">Suggested drop weight:</span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setSetWeights((prev) => ({
+                      ...prev,
+                      [currentWeightKey]: dropSetSuggestion,
+                    }))
+                  }
+                  className="text-xs font-semibold text-amber-700 bg-amber-100 rounded px-2 py-0.5 hover:bg-amber-200"
+                >
+                  {dropSetSuggestion} {weightUnit}
+                </button>
+              </div>
+            )}
+
+            {/* Pyramid target */}
+            {pyramidTarget !== null && (
+              <div className="mt-2 flex items-center gap-2">
+                <span className="text-xs text-indigo-600">Pyramid target:</span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setSetWeights((prev) => ({
+                      ...prev,
+                      [currentWeightKey]: pyramidTarget,
+                    }))
+                  }
+                  className="text-xs font-semibold text-indigo-700 bg-indigo-100 rounded px-2 py-0.5 hover:bg-indigo-200"
+                >
+                  {pyramidTarget} {weightUnit}
+                </button>
+              </div>
+            )}
+          </div>
 
           {/* Set/Rep Counter */}
           <div className="mt-4 flex items-center gap-6">
@@ -584,7 +977,7 @@ export default function WorkoutPlayerPage() {
               </button>
               <button
                 type="button"
-                onClick={() => dispatch({ type: 'COMPLETE_SET' })}
+                onClick={handleCompleteSet}
                 className="flex-1 rounded-lg bg-indigo-100 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-200"
               >
                 Complete Set

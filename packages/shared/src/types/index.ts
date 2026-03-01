@@ -50,6 +50,10 @@ export enum SubscriptionStatus {
   Trialing = 'trialing',
 }
 
+export type WeightUnit = 'lbs' | 'kg';
+
+export type SetType = 'normal' | 'superset' | 'dropset' | 'giant' | 'pyramid';
+
 // ── Core Types ──
 
 export interface User {
@@ -101,6 +105,10 @@ export interface WorkoutExercise {
   duration: number | null;
   rest_after: number;
   order: number;
+  weight?: number;
+  weightUnit?: WeightUnit;
+  setType?: SetType;
+  setGroupId?: string;
 }
 
 export interface WorkoutSession {
@@ -120,6 +128,9 @@ export interface CompletedExercise {
   reps_completed: number | null;
   duration_actual: number | null;
   skipped: boolean;
+  weight?: number;
+  weightUnit?: WeightUnit;
+  estimated1RM?: number;
 }
 
 export interface VoiceCommandLog {
@@ -181,4 +192,105 @@ export interface Subscription {
   external_id: string;
   status: SubscriptionStatus;
   expires_at: string;
+}
+
+// ── Strength Training Types ──
+
+export interface WorkoutSetWeight {
+  id: string;
+  sessionId: string;
+  exerciseId: string;
+  setNumber: number;
+  weight: number;
+  weightUnit: WeightUnit;
+  reps: number;
+  estimated1RM: number;
+  createdAt: string;
+}
+
+export interface Exercise1RMHistory {
+  id: string;
+  userId: string;
+  exerciseId: string;
+  estimated1RM: number;
+  weight: number;
+  reps: number;
+  recordedAt: string;
+}
+
+export interface RoutineTemplate {
+  id: string;
+  title: string;
+  description: string;
+  creatorId: string;
+  exercises: WorkoutExercise[];
+  difficulty: string;
+  isPublic: boolean;
+  cloneCount: number;
+  createdAt: string;
+}
+
+// ── Body Tracking Types ──
+
+export interface BodyMeasurement {
+  id: string;
+  userId: string;
+  measurementType: string;
+  value: number;
+  unit: string;
+  measuredAt: string;
+}
+
+export interface ProgressPhoto {
+  id: string;
+  userId: string;
+  photoUri: string;
+  viewType: 'front' | 'side' | 'back';
+  notes: string;
+  takenAt: string;
+}
+
+// ── Social Types ──
+
+export interface WorkoutSummary {
+  title: string;
+  duration: number;
+  exerciseCount: number;
+  totalSets: number;
+  totalReps: number;
+  totalVolume: number;
+  prsHit: string[];
+  muscleGroups: MuscleGroup[];
+}
+
+export interface SocialPost {
+  id: string;
+  userId: string;
+  sessionId: string;
+  content: WorkoutSummary;
+  createdAt: string;
+  likeCount?: number;
+  commentCount?: number;
+}
+
+export interface SocialLike {
+  id: string;
+  userId: string;
+  postId: string;
+  createdAt: string;
+}
+
+export interface SocialComment {
+  id: string;
+  userId: string;
+  postId: string;
+  body: string;
+  createdAt: string;
+}
+
+export interface SocialFollow {
+  id: string;
+  followerId: string;
+  followingId: string;
+  createdAt: string;
 }

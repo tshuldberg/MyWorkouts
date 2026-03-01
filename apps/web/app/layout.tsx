@@ -30,6 +30,23 @@ async function Nav() {
           <Link href="/progress" className="text-sm text-gray-600 hover:text-gray-900">
             Progress
           </Link>
+          <Link href="/templates" className="text-sm text-gray-600 hover:text-gray-900">
+            Templates
+          </Link>
+          <Link href="/tools/plate-calculator" className="text-sm text-gray-600 hover:text-gray-900">
+            Tools
+          </Link>
+          {/* Body & Social nav group (social-dev) */}
+          <span className="text-gray-300">|</span>
+          <Link href="/measurements" className="text-sm text-gray-600 hover:text-gray-900">
+            Measurements
+          </Link>
+          <Link href="/photos" className="text-sm text-gray-600 hover:text-gray-900">
+            Photos
+          </Link>
+          <Link href="/social" className="text-sm text-gray-600 hover:text-gray-900">
+            Social
+          </Link>
           {user ? (
             <Link href="/profile" className="text-sm text-gray-600 hover:text-gray-900">
               Profile

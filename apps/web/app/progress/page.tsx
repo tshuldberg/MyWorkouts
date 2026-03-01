@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import type { WorkoutSession, Exercise } from '@myworkouts/shared';
 import {
   calculateStreaks,
@@ -175,7 +176,12 @@ export default function ProgressPage() {
                 {personalRecords.slice(0, 5).map((pr) => (
                   <div key={pr.exerciseId} className="flex items-center justify-between py-2">
                     <div>
-                      <div className="text-sm font-medium text-gray-900">{pr.exerciseName}</div>
+                      <Link
+                        href={`/exercise/${pr.exerciseId}/history`}
+                        className="text-sm font-medium text-gray-900 hover:text-indigo-600"
+                      >
+                        {pr.exerciseName}
+                      </Link>
                       <div className="text-xs text-gray-400">
                         {new Date(pr.achievedAt).toLocaleDateString()}
                       </div>

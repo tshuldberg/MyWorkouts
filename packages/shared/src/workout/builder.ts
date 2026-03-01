@@ -1,4 +1,4 @@
-import type { Exercise, Workout, WorkoutExercise, Difficulty } from '../types/index';
+import type { Exercise, Workout, WorkoutExercise, Difficulty, WeightUnit, SetType } from '../types/index';
 
 export interface WorkoutBuilderExercise extends WorkoutExercise {
   name: string;
@@ -12,6 +12,8 @@ export interface WorkoutBuilderState {
   exercises: WorkoutBuilderExercise[];
   isEditing: boolean;
   editingWorkoutId: string | null;
+  /** Indices of exercises currently selected for grouping */
+  selectedForGroup: number[];
 }
 
 export interface WorkoutBuilderActions {
@@ -24,6 +26,9 @@ export interface WorkoutBuilderActions {
   updateExercise: (index: number, updates: Partial<WorkoutBuilderExercise>) => void;
   loadWorkout: (workout: Workout, exerciseNames: Record<string, string>) => void;
   reset: () => void;
+  toggleSelectForGroup: (index: number) => void;
+  groupSelected: (setType?: SetType) => void;
+  ungroupExercise: (index: number) => void;
 }
 
 export type WorkoutBuilderStore = WorkoutBuilderState & WorkoutBuilderActions;
@@ -59,6 +64,10 @@ export function toWorkoutPayload(
       duration: e.duration,
       rest_after: e.rest_after,
       order: i,
+      weight: e.weight,
+      weightUnit: e.weightUnit,
+      setType: e.setType,
+      setGroupId: e.setGroupId,
     })),
     estimated_duration: estimateDuration(state.exercises),
     is_premium: false,
@@ -75,6 +84,7 @@ export function createWorkoutBuilderStore(
     exercises: [],
     isEditing: false,
     editingWorkoutId: null,
+    selectedForGroup: [],
 
     setTitle: (title) => set({ title }),
     setDescription: (description) => set({ description }),
@@ -100,6 +110,9 @@ export function createWorkoutBuilderStore(
     removeExercise: (index) =>
       set((s) => ({
         exercises: s.exercises.filter((_, i) => i !== index),
+        selectedForGroup: s.selectedForGroup
+          .filter((i) => i !== index)
+          .map((i) => (i > index ? i - 1 : i)),
       })),
 
     moveExercise: (fromIndex, toIndex) =>
@@ -129,6 +142,7 @@ export function createWorkoutBuilderStore(
         })),
         isEditing: true,
         editingWorkoutId: workout.id,
+        selectedForGroup: [],
       }),
 
     reset: () =>
@@ -139,6 +153,40 @@ export function createWorkoutBuilderStore(
         exercises: [],
         isEditing: false,
         editingWorkoutId: null,
+        selectedForGroup: [],
+      }),
+
+    toggleSelectForGroup: (index) =>
+      set((s) => {
+        const selected = s.selectedForGroup.includes(index)
+          ? s.selectedForGroup.filter((i) => i !== index)
+          : [...s.selectedForGroup, index].sort((a, b) => a - b);
+        return { selectedForGroup: selected };
+      }),
+
+    groupSelected: (setType: SetType = 'superset') =>
+      set((s) => {
+        if (s.selectedForGroup.length < 2) return {};
+        const groupId = `group-${Date.now()}`;
+        const exercises = s.exercises.map((e, i) =>
+          s.selectedForGroup.includes(i)
+            ? { ...e, setGroupId: groupId, setType }
+            : e
+        );
+        return { exercises, selectedForGroup: [] };
+      }),
+
+    ungroupExercise: (index) =>
+      set((s) => {
+        const ex = s.exercises[index];
+        if (!ex?.setGroupId) return {};
+        const groupId = ex.setGroupId;
+        const exercises = s.exercises.map((e) =>
+          e.setGroupId === groupId
+            ? { ...e, setGroupId: undefined, setType: undefined }
+            : e
+        );
+        return { exercises };
       }),
   };
 }

@@ -3,6 +3,7 @@ import type {
   CompletedExercise,
   MuscleGroup,
   Exercise,
+  WorkoutSetWeight,
 } from '../types/index';
 
 // ── Streak Calculation ──
@@ -129,6 +130,8 @@ export interface PersonalRecord {
   maxReps: number;
   maxSets: number;
   maxDuration: number | null;
+  maxWeight?: number;
+  max1RM?: number;
   achievedAt: string;
 }
 
@@ -279,4 +282,49 @@ export function buildHistory(
         totalReps,
       };
     });
+}
+
+// ── Weight PRs ──
+
+export interface WeightPR {
+  maxWeight: number;
+  max1RM: number;
+  date: string;
+}
+
+/**
+ * Calculate weight-based personal records from set weight data.
+ * Returns a map of exerciseId to the best weight and estimated 1RM achieved.
+ */
+export function calculateWeightPRs(
+  sets: WorkoutSetWeight[],
+): Map<string, WeightPR> {
+  const prs = new Map<string, WeightPR>();
+
+  for (const set of sets) {
+    const existing = prs.get(set.exerciseId);
+
+    if (!existing) {
+      prs.set(set.exerciseId, {
+        maxWeight: set.weight,
+        max1RM: set.estimated1RM,
+        date: set.createdAt,
+      });
+    } else {
+      let updated = false;
+      if (set.weight > existing.maxWeight) {
+        existing.maxWeight = set.weight;
+        updated = true;
+      }
+      if (set.estimated1RM > existing.max1RM) {
+        existing.max1RM = set.estimated1RM;
+        updated = true;
+      }
+      if (updated) {
+        existing.date = set.createdAt;
+      }
+    }
+  }
+
+  return prs;
 }

@@ -1,4 +1,4 @@
-import type { WorkoutExercise, CompletedExercise, Exercise } from '../types/index';
+import type { WorkoutExercise, CompletedExercise, Exercise, SetType } from '../types/index';
 
 // ── State Machine ──
 
@@ -144,6 +144,23 @@ export function reducePlayer(status: PlayerStatus, action: PlayerAction): Player
           return { ...status, state: 'completed', completed: newCompleted, currentExerciseIndex: nextIndex };
         }
 
+        // Superset/group logic: skip rest if next exercise shares the same group
+        const nextExercise = status.exercises[nextIndex];
+        const inSameGroup = current.setGroupId && nextExercise?.setGroupId === current.setGroupId;
+
+        if (inSameGroup) {
+          return {
+            ...status,
+            state: 'playing',
+            completed: newCompleted,
+            currentExerciseIndex: nextIndex,
+            currentSet: 1,
+            currentRep: 0,
+            exerciseElapsed: 0,
+            restRemaining: 0,
+          };
+        }
+
         const restMs = current.rest_after * 1000;
         return {
           ...status,
@@ -158,6 +175,49 @@ export function reducePlayer(status: PlayerStatus, action: PlayerAction): Player
       }
 
       // Inter-set rest (half of rest_after, max 30s)
+      // For superset groups, skip inter-set rest and advance to next exercise in group
+      if (current.setGroupId) {
+        const groupExercises = status.exercises.filter(
+          (e) => e.setGroupId === current.setGroupId
+        );
+        const currentGroupIndex = groupExercises.findIndex(
+          (e) => e.exercise_id === current.exercise_id
+        );
+        const nextInGroup = groupExercises[currentGroupIndex + 1];
+
+        if (nextInGroup) {
+          // Advance to the next exercise in the group (same set number)
+          const nextIdx = status.exercises.findIndex(
+            (e) => e.exercise_id === nextInGroup.exercise_id
+          );
+          return {
+            ...status,
+            state: 'playing',
+            currentExerciseIndex: nextIdx,
+            currentSet: status.currentSet,
+            currentRep: 0,
+            exerciseElapsed: 0,
+            restRemaining: 0,
+          };
+        }
+
+        // Last exercise in group completed a round; rest before next round
+        // Reset to first exercise in group for the next set
+        const firstInGroupIdx = status.exercises.findIndex(
+          (e) => e.setGroupId === current.setGroupId
+        );
+        const interSetRest = Math.min((current.rest_after * 1000) / 2, 30000);
+        return {
+          ...status,
+          state: interSetRest > 0 ? 'rest' : 'playing',
+          currentExerciseIndex: firstInGroupIdx,
+          currentSet: status.currentSet + 1,
+          currentRep: 0,
+          exerciseElapsed: 0,
+          restRemaining: interSetRest,
+        };
+      }
+
       const interSetRest = Math.min((current.rest_after * 1000) / 2, 30000);
       return {
         ...status,

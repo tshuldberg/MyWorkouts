@@ -32,6 +32,25 @@ export {
   type PlanConsumerStore,
 } from './plans';
 
+export {
+  calculateEpley1RM,
+  calculateBrzycki1RM,
+  calculate1RM,
+  type OneRMFormula,
+} from './oneRM';
+
+export {
+  calculatePlates,
+  STANDARD_PLATES_LBS,
+  STANDARD_PLATES_KG,
+  type PlateResult,
+} from './plateCalculator';
+
+export {
+  calculateWarmupSets,
+  type WarmupSet,
+} from './warmupCalculator';
+
 export type WorkoutPlayerState = 'idle' | 'playing' | 'paused' | 'rest' | 'completed';
 
 export interface WorkoutPlayerStatus {
