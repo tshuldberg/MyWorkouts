@@ -12,8 +12,11 @@ export interface DatabaseAdapter {
 
 const DB_DIR = path.join(process.cwd(), '.data');
 const DB_PATH = path.join(DB_DIR, 'myworkouts.sqlite');
+const SCHEMA_VERSION = 2;
+const MAX_CACHED_STATEMENTS = 200;
 
 let _db: Database.Database | null = null;
+let _adapter: DatabaseAdapter | null = null;
 
 function getRawDb(): Database.Database {
   if (_db) return _db;
@@ -24,28 +27,47 @@ function getRawDb(): Database.Database {
   _db.pragma('journal_mode = WAL');
   _db.pragma('foreign_keys = ON');
 
-  // Create tables
-  for (const sql of ALL_TABLES) {
-    _db.exec(sql);
-  }
-  for (const sql of CREATE_INDEXES) {
-    _db.exec(sql);
-  }
+  const currentVersion = Number(_db.pragma('user_version', { simple: true }) ?? 0);
+  if (currentVersion < SCHEMA_VERSION) {
+    for (const sql of ALL_TABLES) {
+      _db.exec(sql);
+    }
+    for (const sql of CREATE_INDEXES) {
+      _db.exec(sql);
+    }
 
-  // Seed exercise library
-  const adapter = makeAdapter(_db);
-  seedExerciseLibrary(adapter);
+    const adapter = makeAdapter(_db);
+    seedExerciseLibrary(adapter);
+    _db.pragma(`user_version = ${SCHEMA_VERSION}`);
+  }
 
   return _db;
 }
 
 function makeAdapter(db: Database.Database): DatabaseAdapter {
+  const statementCache = new Map<string, Database.Statement>();
+
+  const getStatement = (sql: string): Database.Statement => {
+    const cached = statementCache.get(sql);
+    if (cached) return cached;
+
+    const statement = db.prepare(sql);
+    statementCache.set(sql, statement);
+    if (statementCache.size > MAX_CACHED_STATEMENTS) {
+      const oldest = statementCache.keys().next().value;
+      if (oldest) {
+        statementCache.delete(oldest);
+      }
+    }
+    return statement;
+  };
+
   return {
     execute(sql: string, params?: unknown[]) {
-      db.prepare(sql).run(...(params ?? []));
+      getStatement(sql).run(...(params ?? []));
     },
     query<T = Record<string, unknown>>(sql: string, params?: unknown[]): T[] {
-      return db.prepare(sql).all(...(params ?? [])) as T[];
+      return getStatement(sql).all(...(params ?? [])) as T[];
     },
     transaction(fn: () => void) {
       db.transaction(fn)();
@@ -54,6 +76,8 @@ function makeAdapter(db: Database.Database): DatabaseAdapter {
 }
 
 export function getDb(): DatabaseAdapter {
+  if (_adapter) return _adapter;
   const db = getRawDb();
-  return makeAdapter(db);
+  _adapter = makeAdapter(db);
+  return _adapter;
 }

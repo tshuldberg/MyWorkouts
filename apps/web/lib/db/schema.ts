@@ -188,16 +188,22 @@ CREATE TABLE IF NOT EXISTS social_follows (
 )`;
 
 export const CREATE_INDEXES = [
+  'CREATE INDEX IF NOT EXISTS exercises_name_idx ON exercises(name)',
   'CREATE INDEX IF NOT EXISTS exercises_category_idx ON exercises(category)',
   'CREATE INDEX IF NOT EXISTS exercises_difficulty_idx ON exercises(difficulty)',
+  'CREATE INDEX IF NOT EXISTS workouts_title_idx ON workouts(title)',
   'CREATE INDEX IF NOT EXISTS workouts_creator_idx ON workouts(creator_id)',
   'CREATE INDEX IF NOT EXISTS workouts_created_idx ON workouts(created_at DESC)',
   'CREATE INDEX IF NOT EXISTS workout_sessions_user_idx ON workout_sessions(user_id)',
+  'CREATE INDEX IF NOT EXISTS workout_sessions_user_started_idx ON workout_sessions(user_id, started_at DESC)',
   'CREATE INDEX IF NOT EXISTS workout_sessions_workout_idx ON workout_sessions(workout_id)',
   'CREATE INDEX IF NOT EXISTS workout_sessions_completed_idx ON workout_sessions(completed_at DESC)',
   'CREATE INDEX IF NOT EXISTS form_recordings_session_idx ON form_recordings(session_id)',
+  'CREATE INDEX IF NOT EXISTS workout_plans_coach_created_idx ON workout_plans(coach_id, created_at DESC)',
   'CREATE INDEX IF NOT EXISTS plan_subscriptions_user_idx ON plan_subscriptions(user_id)',
   'CREATE INDEX IF NOT EXISTS plan_subscriptions_plan_idx ON plan_subscriptions(plan_id)',
+  'CREATE UNIQUE INDEX IF NOT EXISTS plan_subscriptions_user_plan_uidx ON plan_subscriptions(user_id, plan_id)',
+  'CREATE INDEX IF NOT EXISTS subscriptions_user_status_idx ON subscriptions(user_id, status)',
   'CREATE INDEX IF NOT EXISTS workout_set_weights_session_idx ON workout_set_weights(session_id)',
   'CREATE INDEX IF NOT EXISTS workout_set_weights_user_exercise_idx ON workout_set_weights(user_id, exercise_id)',
   'CREATE INDEX IF NOT EXISTS exercise_1rm_history_user_exercise_idx ON exercise_1rm_history(user_id, exercise_id)',

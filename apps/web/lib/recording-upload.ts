@@ -5,6 +5,8 @@ interface UploadResult {
   path: string;
 }
 
+const trackedBlobUrls = new Set<string>();
+
 /**
  * Store recording metadata locally. In SQLite mode we keep the blob URL as the
  * video reference (no cloud storage). The recording is playable only in the
@@ -20,6 +22,7 @@ export async function uploadRecording(
 ): Promise<UploadResult | null> {
   // Create a local blob URL for playback
   const blobUrl = URL.createObjectURL(blob);
+  trackedBlobUrls.add(blobUrl);
 
   // Store metadata in SQLite
   const id = await saveFormRecording({
@@ -47,8 +50,12 @@ export async function getRecordingUrl(path: string): Promise<string | null> {
  */
 export async function deleteRecording(
   recordingId: string,
-  _storagePath: string,
+  storagePath: string,
 ): Promise<boolean> {
   await removeFormRecording(recordingId);
+  if (storagePath.startsWith('blob:')) {
+    URL.revokeObjectURL(storagePath);
+    trackedBlobUrls.delete(storagePath);
+  }
   return true;
 }

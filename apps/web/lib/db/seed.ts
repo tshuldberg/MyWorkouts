@@ -38,13 +38,8 @@ export function seedExerciseLibrary(db: DatabaseAdapter): number {
 }
 
 export function seedDefaultUser(db: DatabaseAdapter): void {
-  const existing = db.query<{ c: number }>(
-    "SELECT COUNT(*) as c FROM users WHERE id = 'local-user'",
-  )[0]?.c ?? 0;
-  if (existing > 0) return;
-
   db.execute(
-    `INSERT INTO users (id, email, display_name, subscription_tier, created_at)
+    `INSERT OR IGNORE INTO users (id, email, display_name, subscription_tier, created_at)
      VALUES (?, ?, ?, ?, ?)`,
     [
       'local-user',

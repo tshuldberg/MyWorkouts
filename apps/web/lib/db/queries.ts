@@ -15,6 +15,11 @@ import type {
   Subscription,
 } from '@myworkouts/shared';
 
+interface QueryPagination {
+  limit?: number;
+  offset?: number;
+}
+
 function parseJson<T>(value: unknown, fallback: T): T {
   if (typeof value !== 'string' || value.length === 0) return fallback;
   try {
@@ -26,6 +31,35 @@ function parseJson<T>(value: unknown, fallback: T): T {
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function applyPagination(
+  baseSql: string,
+  params: unknown[],
+  pagination?: QueryPagination,
+): { sql: string; params: unknown[] } {
+  if (!pagination) {
+    return { sql: baseSql, params };
+  }
+
+  const nextParams = [...params];
+  let sql = baseSql;
+  const limit = pagination.limit;
+  const offset = pagination.offset;
+
+  if (typeof limit === 'number') {
+    sql += ' LIMIT ?';
+    nextParams.push(Math.max(0, Math.floor(limit)));
+  }
+  if (typeof offset === 'number') {
+    if (typeof limit !== 'number') {
+      sql += ' LIMIT -1';
+    }
+    sql += ' OFFSET ?';
+    nextParams.push(Math.max(0, Math.floor(offset)));
+  }
+
+  return { sql, params: nextParams };
 }
 
 // ── Exercise Queries ──
@@ -46,9 +80,17 @@ function rowToExercise(row: Record<string, unknown>): Exercise {
   };
 }
 
-export function getExercises(db: DatabaseAdapter): Exercise[] {
+export function getExercises(
+  db: DatabaseAdapter,
+  pagination?: QueryPagination,
+): Exercise[] {
+  const { sql, params } = applyPagination(
+    'SELECT * FROM exercises ORDER BY name ASC',
+    [],
+    pagination,
+  );
   return db
-    .query<Record<string, unknown>>('SELECT * FROM exercises ORDER BY name ASC')
+    .query<Record<string, unknown>>(sql, params)
     .map(rowToExercise);
 }
 
@@ -105,11 +147,17 @@ export function getWorkouts(
     .map(rowToWorkout);
 }
 
-export function getAllWorkouts(db: DatabaseAdapter): Workout[] {
+export function getAllWorkouts(
+  db: DatabaseAdapter,
+  pagination?: QueryPagination,
+): Workout[] {
+  const { sql, params } = applyPagination(
+    'SELECT * FROM workouts ORDER BY title ASC',
+    [],
+    pagination,
+  );
   return db
-    .query<Record<string, unknown>>(
-      'SELECT * FROM workouts ORDER BY title ASC',
-    )
+    .query<Record<string, unknown>>(sql, params)
     .map(rowToWorkout);
 }
 
@@ -230,12 +278,15 @@ function rowToSession(row: Record<string, unknown>): WorkoutSession {
 export function getWorkoutSessions(
   db: DatabaseAdapter,
   userId: string,
+  pagination?: QueryPagination,
 ): WorkoutSession[] {
+  const { sql, params } = applyPagination(
+    'SELECT * FROM workout_sessions WHERE user_id = ? ORDER BY started_at DESC',
+    [userId],
+    pagination,
+  );
   return db
-    .query<Record<string, unknown>>(
-      'SELECT * FROM workout_sessions WHERE user_id = ? ORDER BY started_at DESC',
-      [userId],
-    )
+    .query<Record<string, unknown>>(sql, params)
     .map(rowToSession);
 }
 
@@ -292,16 +343,19 @@ function rowToRecording(row: Record<string, unknown>): FormRecording {
 export function getFormRecordings(
   db: DatabaseAdapter,
   userId: string,
+  pagination?: QueryPagination,
 ): FormRecording[] {
   // Join with workout_sessions to filter by user
+  const { sql, params } = applyPagination(
+    `SELECT fr.* FROM form_recordings fr
+     INNER JOIN workout_sessions ws ON fr.session_id = ws.id
+     WHERE ws.user_id = ?
+     ORDER BY fr.created_at DESC`,
+    [userId],
+    pagination,
+  );
   return db
-    .query<Record<string, unknown>>(
-      `SELECT fr.* FROM form_recordings fr
-       INNER JOIN workout_sessions ws ON fr.session_id = ws.id
-       WHERE ws.user_id = ?
-       ORDER BY fr.created_at DESC`,
-      [userId],
-    )
+    .query<Record<string, unknown>>(sql, params)
     .map(rowToRecording);
 }
 

@@ -1,6 +1,6 @@
 'use server';
 
-import { getDb } from './database';
+import { getDb, type DatabaseAdapter } from './database';
 import {
   getExercises,
   getExerciseById,
@@ -43,52 +43,66 @@ import type {
 } from '@myworkouts/shared';
 
 const LOCAL_USER_ID = 'local-user';
+let localUserReady = false;
 
-function ensureUser(): string {
-  const db = getDb();
-  seedDefaultUser(db);
+function ensureUser(db: DatabaseAdapter): string {
+  if (!localUserReady) {
+    seedDefaultUser(db);
+    localUserReady = true;
+  }
   return LOCAL_USER_ID;
+}
+
+function getRequestContext(): { db: DatabaseAdapter; userId: string } {
+  const db = getDb();
+  const userId = ensureUser(db);
+  return { db, userId };
 }
 
 // ── Exercises ──
 
 export async function fetchExercises(): Promise<Exercise[]> {
-  return getExercises(getDb());
+  const db = getDb();
+  return getExercises(db);
 }
 
 export async function fetchExerciseById(id: string): Promise<Exercise | null> {
-  return getExerciseById(getDb(), id);
+  const db = getDb();
+  return getExerciseById(db, id);
 }
 
 export async function fetchExercisesByIds(ids: string[]): Promise<Exercise[]> {
-  return getExercisesByIds(getDb(), ids);
+  const db = getDb();
+  return getExercisesByIds(db, ids);
 }
 
 // ── Workouts ──
 
 export async function fetchWorkouts(): Promise<Workout[]> {
-  const userId = ensureUser();
-  return getWorkouts(getDb(), userId);
+  const { db, userId } = getRequestContext();
+  return getWorkouts(db, userId);
 }
 
 export async function fetchAllWorkouts(): Promise<Workout[]> {
-  return getAllWorkouts(getDb());
+  const db = getDb();
+  return getAllWorkouts(db);
 }
 
 export async function fetchWorkoutById(id: string): Promise<Workout | null> {
-  return getWorkoutById(getDb(), id);
+  const db = getDb();
+  return getWorkoutById(db, id);
 }
 
 export async function fetchWorkoutTitles(ids: string[]): Promise<Record<string, string>> {
-  return getWorkoutTitles(getDb(), ids);
+  const db = getDb();
+  return getWorkoutTitles(db, ids);
 }
 
 export async function saveWorkout(
   payload: Record<string, unknown>,
   editId?: string | null,
 ): Promise<void> {
-  const userId = ensureUser();
-  const db = getDb();
+  const { db, userId } = getRequestContext();
 
   if (editId) {
     dbUpdateWorkout(db, editId, payload as any);
@@ -109,13 +123,13 @@ export async function saveWorkout(
 // ── Workout Sessions ──
 
 export async function fetchWorkoutSessions(): Promise<WorkoutSession[]> {
-  const userId = ensureUser();
-  return getWorkoutSessions(getDb(), userId);
+  const { db, userId } = getRequestContext();
+  return getWorkoutSessions(db, userId);
 }
 
 export async function startWorkoutSession(workoutId: string): Promise<string> {
-  const userId = ensureUser();
-  return dbCreateWorkoutSession(getDb(), { user_id: userId, workout_id: workoutId });
+  const { db, userId } = getRequestContext();
+  return dbCreateWorkoutSession(db, { user_id: userId, workout_id: workoutId });
 }
 
 export async function finishWorkoutSession(
@@ -125,7 +139,8 @@ export async function finishWorkoutSession(
     voice_commands_used: VoiceCommandLog[];
   },
 ): Promise<void> {
-  dbCompleteWorkoutSession(getDb(), sessionId, {
+  const db = getDb();
+  dbCompleteWorkoutSession(db, sessionId, {
     ...data,
     completed_at: new Date().toISOString(),
   });
@@ -134,12 +149,13 @@ export async function finishWorkoutSession(
 // ── Form Recordings ──
 
 export async function fetchFormRecordings(): Promise<FormRecording[]> {
-  const userId = ensureUser();
-  return getFormRecordings(getDb(), userId);
+  const { db, userId } = getRequestContext();
+  return getFormRecordings(db, userId);
 }
 
 export async function fetchFormRecordingById(id: string): Promise<FormRecording | null> {
-  return getFormRecordingById(getDb(), id);
+  const db = getDb();
+  return getFormRecordingById(db, id);
 }
 
 export async function saveFormRecording(input: {
@@ -149,18 +165,19 @@ export async function saveFormRecording(input: {
   timestamp_start: number;
   timestamp_end: number;
 }): Promise<string> {
-  return dbCreateFormRecording(getDb(), input);
+  const db = getDb();
+  return dbCreateFormRecording(db, input);
 }
 
 export async function removeFormRecording(id: string): Promise<void> {
-  dbDeleteFormRecording(getDb(), id);
+  const db = getDb();
+  dbDeleteFormRecording(db, id);
 }
 
 // ── Workout Plans ──
 
 export async function fetchWorkoutPlans(): Promise<{ plans: WorkoutPlan[]; isCoach: boolean }> {
-  const userId = ensureUser();
-  const db = getDb();
+  const { db, userId } = getRequestContext();
   const coachPlans = getWorkoutPlans(db, userId);
   if (coachPlans.length > 0) {
     return { plans: coachPlans, isCoach: true };
@@ -170,15 +187,15 @@ export async function fetchWorkoutPlans(): Promise<{ plans: WorkoutPlan[]; isCoa
 }
 
 export async function fetchWorkoutPlanById(id: string): Promise<WorkoutPlan | null> {
-  return getWorkoutPlanById(getDb(), id);
+  const db = getDb();
+  return getWorkoutPlanById(db, id);
 }
 
 export async function savePlan(
   payload: Record<string, unknown>,
   editId?: string | null,
 ): Promise<void> {
-  const userId = ensureUser();
-  const db = getDb();
+  const { db, userId } = getRequestContext();
 
   if (editId) {
     dbUpdateWorkoutPlan(db, editId, payload as any);
@@ -198,8 +215,8 @@ export async function savePlan(
 export async function fetchPlanSubscription(
   planId: string,
 ): Promise<{ following: boolean; startedAt: string | null }> {
-  const userId = ensureUser();
-  const sub = getPlanSubscription(getDb(), userId, planId);
+  const { db, userId } = getRequestContext();
+  const sub = getPlanSubscription(db, userId, planId);
   return {
     following: !!sub,
     startedAt: sub?.started_at ?? null,
@@ -207,9 +224,9 @@ export async function fetchPlanSubscription(
 }
 
 export async function followPlan(planId: string): Promise<string> {
-  const userId = ensureUser();
+  const { db, userId } = getRequestContext();
   const startedAt = new Date().toISOString();
-  dbCreatePlanSubscription(getDb(), {
+  dbCreatePlanSubscription(db, {
     user_id: userId,
     plan_id: planId,
     started_at: startedAt,
@@ -218,23 +235,23 @@ export async function followPlan(planId: string): Promise<string> {
 }
 
 export async function unfollowPlan(planId: string): Promise<void> {
-  const userId = ensureUser();
-  dbDeletePlanSubscription(getDb(), userId, planId);
+  const { db, userId } = getRequestContext();
+  dbDeletePlanSubscription(db, userId, planId);
 }
 
 // ── User / Profile ──
 
 export async function fetchCurrentUser(): Promise<User | null> {
-  const userId = ensureUser();
-  return getUserById(getDb(), userId);
+  const { db, userId } = getRequestContext();
+  return getUserById(db, userId);
 }
 
 export async function updateProfile(updates: {
   display_name?: string | null;
   avatar_url?: string | null;
 }): Promise<void> {
-  const userId = ensureUser();
-  dbUpdateUser(getDb(), userId, updates);
+  const { db, userId } = getRequestContext();
+  dbUpdateUser(db, userId, updates);
 }
 
 export async function fetchSubscriptionStatus(): Promise<{
@@ -242,8 +259,8 @@ export async function fetchSubscriptionStatus(): Promise<{
   status: string | null;
   expiresAt: string | null;
 }> {
-  const userId = ensureUser();
-  const sub = getActiveSubscription(getDb(), userId);
+  const { db, userId } = getRequestContext();
+  const sub = getActiveSubscription(db, userId);
   if (!sub) {
     // In local mode, everyone is premium
     return { plan: 'premium', status: 'active', expiresAt: null };

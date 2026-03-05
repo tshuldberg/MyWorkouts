@@ -17,26 +17,48 @@ export interface ExerciseActions {
 
 export type ExerciseStore = ExerciseState & ExerciseActions;
 
+const searchTextCache = new WeakMap<Exercise, string>();
+
+function getSearchText(exercise: Exercise): string {
+  const cached = searchTextCache.get(exercise);
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  const searchText = `${exercise.name} ${(exercise.description ?? '')}`.toLowerCase();
+  searchTextCache.set(exercise, searchText);
+  return searchText;
+}
+
 export function getFilteredExercises(state: ExerciseState): Exercise[] {
-  let result = state.exercises;
+  const selectedCategory = state.selectedCategory;
+  const selectedMuscles =
+    state.selectedMuscles.length > 0 ? new Set(state.selectedMuscles) : null;
+  const searchQuery =
+    state.searchQuery.length >= 2 ? state.searchQuery.toLowerCase() : null;
+  const result: Exercise[] = [];
 
-  if (state.selectedMuscles.length > 0) {
-    result = result.filter((e) =>
-      state.selectedMuscles.some((m) => e.muscle_groups.includes(m))
-    );
-  }
+  for (const exercise of state.exercises) {
+    if (selectedMuscles) {
+      let muscleMatch = false;
+      for (const muscle of exercise.muscle_groups) {
+        if (selectedMuscles.has(muscle)) {
+          muscleMatch = true;
+          break;
+        }
+      }
+      if (!muscleMatch) continue;
+    }
 
-  if (state.selectedCategory !== null) {
-    result = result.filter((e) => e.category === state.selectedCategory);
-  }
+    if (selectedCategory !== null && exercise.category !== selectedCategory) {
+      continue;
+    }
 
-  if (state.searchQuery.length >= 2) {
-    const q = state.searchQuery.toLowerCase();
-    result = result.filter(
-      (e) =>
-        e.name.toLowerCase().includes(q) ||
-        e.description.toLowerCase().includes(q)
-    );
+    if (searchQuery && !getSearchText(exercise).includes(searchQuery)) {
+      continue;
+    }
+
+    result.push(exercise);
   }
 
   return result;

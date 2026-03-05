@@ -23,35 +23,33 @@ export function calculateStreaks(sessions: WorkoutSession[]): StreakInfo {
     return { current: 0, longest: 0, lastWorkoutDate: null };
   }
 
-  // Get unique workout dates (YYYY-MM-DD), sorted descending
-  const dateSet = new Set<string>();
+  const dayMs = 86400000;
+  // Epoch-day numbers (UTC) sorted descending.
+  const dateSet = new Set<number>();
   for (const s of sessions) {
     if (s.completed_at) {
-      dateSet.add(s.completed_at.slice(0, 10));
+      dateSet.add(Math.floor(Date.parse(s.completed_at) / dayMs));
     }
   }
-  const dates = Array.from(dateSet).sort().reverse();
+  const dates = Array.from(dateSet).sort((a, b) => b - a);
   if (dates.length === 0) {
     return { current: 0, longest: 0, lastWorkoutDate: null };
   }
 
-  const lastWorkoutDate = dates[0];
+  const lastWorkoutDate = new Date(dates[0] * dayMs).toISOString().slice(0, 10);
 
   // Check if current streak is active (last workout is today or yesterday)
-  const today = new Date().toISOString().slice(0, 10);
-  const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-  const streakActive = lastWorkoutDate === today || lastWorkoutDate === yesterday;
+  const todayEpochDay = Math.floor(Date.now() / dayMs);
+  const streakActive = dates[0] === todayEpochDay || dates[0] === todayEpochDay - 1;
 
   let current = 0;
   let longest = 0;
   let streak = 1;
 
   for (let i = 1; i < dates.length; i++) {
-    const prev = new Date(dates[i - 1]);
-    const curr = new Date(dates[i]);
-    const diffDays = (prev.getTime() - curr.getTime()) / 86400000;
+    const diffDays = dates[i - 1] - dates[i];
 
-    if (Math.round(diffDays) === 1) {
+    if (diffDays === 1) {
       streak++;
     } else {
       if (i === 1 || current === 0) {
@@ -98,9 +96,11 @@ export function calculateVolume(
     if (!session.completed_at) continue;
     stats.totalSessions++;
 
-    const start = new Date(session.started_at).getTime();
-    const end = new Date(session.completed_at).getTime();
-    stats.totalDurationMinutes += (end - start) / 60000;
+    const startMs = Date.parse(session.started_at);
+    const endMs = Date.parse(session.completed_at);
+    if (!Number.isNaN(startMs) && !Number.isNaN(endMs)) {
+      stats.totalDurationMinutes += (endMs - startMs) / 60000;
+    }
 
     for (const ce of session.exercises_completed) {
       if (ce.skipped) continue;
@@ -207,36 +207,44 @@ export function getWeeklySummaries(
   sessions: WorkoutSession[],
   weekCount: number = 8,
 ): PeriodSummary[] {
-  const summaries: PeriodSummary[] = [];
-  const now = new Date();
+  const dayMs = 86400000;
+  const weekMs = 7 * dayMs;
+  const nowMs = Date.now();
+  const maxAgeMs = weekCount * weekMs;
+  const buckets = Array.from({ length: weekCount }, () => ({
+    sessions: 0,
+    totalMinutes: 0,
+    totalReps: 0,
+  }));
 
-  for (let w = 0; w < weekCount; w++) {
-    const weekEnd = new Date(now.getTime() - w * 7 * 86400000);
-    const weekStart = new Date(weekEnd.getTime() - 7 * 86400000);
+  for (const session of sessions) {
+    if (!session.completed_at) continue;
 
-    const weekSessions = sessions.filter((s) => {
-      if (!s.completed_at) return false;
-      const d = new Date(s.completed_at);
-      return d >= weekStart && d < weekEnd;
-    });
+    const completedAtMs = new Date(session.completed_at).getTime();
+    const ageMs = nowMs - completedAtMs;
+    if (ageMs < 0 || ageMs >= maxAgeMs) continue;
 
-    let totalMinutes = 0;
-    let totalReps = 0;
-    for (const s of weekSessions) {
-      if (s.completed_at) {
-        totalMinutes += (new Date(s.completed_at).getTime() - new Date(s.started_at).getTime()) / 60000;
-      }
-      for (const ce of s.exercises_completed) {
-        if (!ce.skipped) totalReps += ce.reps_completed ?? 0;
-      }
+    const weekIndex = Math.floor(ageMs / weekMs);
+    const bucket = buckets[weekIndex];
+    bucket.sessions += 1;
+    bucket.totalMinutes +=
+      (completedAtMs - new Date(session.started_at).getTime()) / 60000;
+
+    for (const ce of session.exercises_completed) {
+      if (!ce.skipped) bucket.totalReps += ce.reps_completed ?? 0;
     }
+  }
 
+  const summaries: PeriodSummary[] = [];
+  for (let w = 0; w < weekCount; w++) {
+    const weekStart = new Date(nowMs - (w + 1) * weekMs);
     const startLabel = `${weekStart.getMonth() + 1}/${weekStart.getDate()}`;
+    const bucket = buckets[w];
     summaries.push({
       label: w === 0 ? 'This Week' : w === 1 ? 'Last Week' : startLabel,
-      sessions: weekSessions.length,
-      totalMinutes: Math.round(totalMinutes),
-      totalReps,
+      sessions: bucket.sessions,
+      totalMinutes: Math.round(bucket.totalMinutes),
+      totalReps: bucket.totalReps,
     });
   }
 
@@ -260,28 +268,40 @@ export function buildHistory(
   sessions: WorkoutSession[],
   workoutTitles: Record<string, string>,
 ): WorkoutHistoryEntry[] {
-  return sessions
-    .filter((s) => s.completed_at !== null)
-    .sort((a, b) => new Date(b.completed_at!).getTime() - new Date(a.completed_at!).getTime())
-    .map((s) => {
-      const dur = s.completed_at
-        ? (new Date(s.completed_at).getTime() - new Date(s.started_at).getTime()) / 60000
-        : 0;
-      const completed = s.exercises_completed.filter((e) => !e.skipped);
-      let totalReps = 0;
-      for (const ce of completed) totalReps += ce.reps_completed ?? 0;
+  const entries: WorkoutHistoryEntry[] = [];
 
-      return {
-        sessionId: s.id,
-        workoutId: s.workout_id,
-        workoutTitle: workoutTitles[s.workout_id] ?? 'Workout',
-        date: s.completed_at!,
-        durationMinutes: Math.round(dur),
-        exercisesCompleted: completed.length,
-        exercisesTotal: s.exercises_completed.length,
-        totalReps,
-      };
+  for (const session of sessions) {
+    if (!session.completed_at) continue;
+
+    let exercisesCompleted = 0;
+    let totalReps = 0;
+    for (const ce of session.exercises_completed) {
+      if (ce.skipped) continue;
+      exercisesCompleted += 1;
+      totalReps += ce.reps_completed ?? 0;
+    }
+
+    const startedAtMs = Date.parse(session.started_at);
+    const completedAtMs = Date.parse(session.completed_at);
+    const durationMinutes =
+      !Number.isNaN(startedAtMs) && !Number.isNaN(completedAtMs)
+        ? Math.round((completedAtMs - startedAtMs) / 60000)
+        : 0;
+
+    entries.push({
+      sessionId: session.id,
+      workoutId: session.workout_id,
+      workoutTitle: workoutTitles[session.workout_id] ?? 'Workout',
+      date: session.completed_at,
+      durationMinutes,
+      exercisesCompleted,
+      exercisesTotal: session.exercises_completed.length,
+      totalReps,
     });
+  }
+
+  entries.sort((a, b) => Date.parse(b.date) - Date.parse(a.date));
+  return entries;
 }
 
 // ── Weight PRs ──

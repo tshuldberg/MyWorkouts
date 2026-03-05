@@ -168,8 +168,9 @@ export function createWorkoutBuilderStore(
       set((s) => {
         if (s.selectedForGroup.length < 2) return {};
         const groupId = `group-${Date.now()}`;
+        const selectedIndexSet = new Set(s.selectedForGroup);
         const exercises = s.exercises.map((e, i) =>
-          s.selectedForGroup.includes(i)
+          selectedIndexSet.has(i)
             ? { ...e, setGroupId: groupId, setType }
             : e
         );

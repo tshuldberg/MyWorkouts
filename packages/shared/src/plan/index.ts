@@ -41,6 +41,24 @@ function buildWeeks(count: number, existing: WorkoutPlanWeek[]): WorkoutPlanWeek
   );
 }
 
+function updateWeekDay(
+  weeks: WorkoutPlanWeek[],
+  weekIndex: number,
+  dayIndex: number,
+  update: (day: WorkoutPlanDay) => WorkoutPlanDay,
+): WorkoutPlanWeek[] {
+  const week = weeks[weekIndex];
+  if (!week) return weeks;
+  const day = week.days[dayIndex];
+  if (!day) return weeks;
+
+  const nextWeeks = [...weeks];
+  const nextDays = [...week.days];
+  nextDays[dayIndex] = update(day);
+  nextWeeks[weekIndex] = { ...week, days: nextDays };
+  return nextWeeks;
+}
+
 export function toPlanPayload(
   state: PlanBuilderState,
   coachId: string,
@@ -110,46 +128,28 @@ export function createPlanBuilderStore(
 
     setDayWorkout: (weekIndex, dayIndex, workoutId) =>
       set((s) => ({
-        weeks: s.weeks.map((w, wi) =>
-          wi === weekIndex
-            ? {
-                ...w,
-                days: w.days.map((d, di) =>
-                  di === dayIndex ? { ...d, workout_id: workoutId, rest_day: false } : d
-                ),
-              }
-            : w
-        ),
+        weeks: updateWeekDay(s.weeks, weekIndex, dayIndex, (day) => ({
+          ...day,
+          workout_id: workoutId,
+          rest_day: false,
+        })),
       })),
 
     setDayNotes: (weekIndex, dayIndex, notes) =>
       set((s) => ({
-        weeks: s.weeks.map((w, wi) =>
-          wi === weekIndex
-            ? {
-                ...w,
-                days: w.days.map((d, di) =>
-                  di === dayIndex ? { ...d, notes } : d
-                ),
-              }
-            : w
-        ),
+        weeks: updateWeekDay(s.weeks, weekIndex, dayIndex, (day) => ({
+          ...day,
+          notes,
+        })),
       })),
 
     toggleRestDay: (weekIndex, dayIndex) =>
       set((s) => ({
-        weeks: s.weeks.map((w, wi) =>
-          wi === weekIndex
-            ? {
-                ...w,
-                days: w.days.map((d, di) =>
-                  di === dayIndex
-                    ? { ...d, rest_day: !d.rest_day, workout_id: d.rest_day ? d.workout_id : null }
-                    : d
-                ),
-              }
-            : w
-        ),
+        weeks: updateWeekDay(s.weeks, weekIndex, dayIndex, (day) => ({
+          ...day,
+          rest_day: !day.rest_day,
+          workout_id: day.rest_day ? day.workout_id : null,
+        })),
       })),
 
     loadPlan: (plan) =>

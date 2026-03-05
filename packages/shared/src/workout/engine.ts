@@ -19,6 +19,43 @@ export interface PlayerStatus {
   speed: number;
   exercises: WorkoutExercise[];
   completed: CompletedExercise[];
+  /** Precomputed navigation indexes for grouped exercises (supersets, etc.) */
+  groupNavigation: {
+    nextInGroupByIndex: Record<number, number | undefined>;
+    firstInGroupById: Record<string, number>;
+  };
+}
+
+function buildGroupNavigation(exercises: WorkoutExercise[]): {
+  nextInGroupByIndex: Record<number, number | undefined>;
+  firstInGroupById: Record<string, number>;
+} {
+  const groupedIndexes = new Map<string, number[]>();
+
+  for (let i = 0; i < exercises.length; i++) {
+    const groupId = exercises[i]?.setGroupId;
+    if (!groupId) continue;
+
+    const indexes = groupedIndexes.get(groupId);
+    if (indexes) {
+      indexes.push(i);
+    } else {
+      groupedIndexes.set(groupId, [i]);
+    }
+  }
+
+  const nextInGroupByIndex: Record<number, number | undefined> = {};
+  const firstInGroupById: Record<string, number> = {};
+
+  for (const [groupId, indexes] of groupedIndexes) {
+    if (indexes.length === 0) continue;
+    firstInGroupById[groupId] = indexes[0];
+    for (let i = 0; i < indexes.length - 1; i++) {
+      nextInGroupByIndex[indexes[i]] = indexes[i + 1];
+    }
+  }
+
+  return { nextInGroupByIndex, firstInGroupById };
 }
 
 export function createPlayerStatus(exercises: WorkoutExercise[]): PlayerStatus {
@@ -33,6 +70,7 @@ export function createPlayerStatus(exercises: WorkoutExercise[]): PlayerStatus {
     speed: 1.0,
     exercises,
     completed: [],
+    groupNavigation: buildGroupNavigation(exercises),
   };
 }
 
@@ -177,19 +215,11 @@ export function reducePlayer(status: PlayerStatus, action: PlayerAction): Player
       // Inter-set rest (half of rest_after, max 30s)
       // For superset groups, skip inter-set rest and advance to next exercise in group
       if (current.setGroupId) {
-        const groupExercises = status.exercises.filter(
-          (e) => e.setGroupId === current.setGroupId
-        );
-        const currentGroupIndex = groupExercises.findIndex(
-          (e) => e.exercise_id === current.exercise_id
-        );
-        const nextInGroup = groupExercises[currentGroupIndex + 1];
+        const nextIdx =
+          status.groupNavigation.nextInGroupByIndex[status.currentExerciseIndex];
 
-        if (nextInGroup) {
+        if (nextIdx !== undefined) {
           // Advance to the next exercise in the group (same set number)
-          const nextIdx = status.exercises.findIndex(
-            (e) => e.exercise_id === nextInGroup.exercise_id
-          );
           return {
             ...status,
             state: 'playing',
@@ -203,9 +233,9 @@ export function reducePlayer(status: PlayerStatus, action: PlayerAction): Player
 
         // Last exercise in group completed a round; rest before next round
         // Reset to first exercise in group for the next set
-        const firstInGroupIdx = status.exercises.findIndex(
-          (e) => e.setGroupId === current.setGroupId
-        );
+        const firstInGroupIdx =
+          status.groupNavigation.firstInGroupById[current.setGroupId] ??
+          status.currentExerciseIndex;
         const interSetRest = Math.min((current.rest_after * 1000) / 2, 30000);
         return {
           ...status,

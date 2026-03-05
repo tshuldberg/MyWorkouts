@@ -21,7 +21,9 @@ export interface CameraRecorderAdapter {
 interface CameraRecorderConfig {
   onRecordingComplete?: (blob: Blob) => void;
   onError?: (error: string) => void;
+  onChunk?: (chunk: Blob) => void;
   facingMode?: 'user' | 'environment';
+  maxBufferedBytes?: number;
 }
 
 function getPreferredMimeType(): string {
@@ -47,6 +49,9 @@ export function createCameraRecorder(
   let stream: MediaStream | null = null;
   let recorder: MediaRecorder | null = null;
   let chunks: Blob[] = [];
+  const maxBufferedBytes = config.maxBufferedBytes ?? 64 * 1024 * 1024; // 64 MB
+  let bufferedBytes = 0;
+  let bufferLimitReached = false;
   let isRecording = false;
   let isPreviewing = false;
   let resolveBlob: ((blob: Blob) => void) | null = null;
@@ -81,18 +86,42 @@ export function createCameraRecorder(
     startRecording() {
       if (!stream || isRecording) return;
       chunks = [];
+      bufferedBytes = 0;
+      bufferLimitReached = false;
 
       const mimeType = getPreferredMimeType();
       recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
 
       recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunks.push(e.data);
+        if (e.data.size === 0) return;
+        config.onChunk?.(e.data);
+        if (bufferLimitReached) return;
+
+        const nextBufferedBytes = bufferedBytes + e.data.size;
+        if (nextBufferedBytes > maxBufferedBytes) {
+          bufferLimitReached = true;
+          const mb = Math.round(maxBufferedBytes / (1024 * 1024));
+          config.onError?.(
+            `Recording exceeded in-memory buffer limit (${mb} MB). Stopping recording.`,
+          );
+          try {
+            recorder?.stop();
+          } catch {
+            // Already stopping/stopped
+          }
+          return;
+        }
+
+        chunks.push(e.data);
+        bufferedBytes = nextBufferedBytes;
       };
 
       recorder.onstop = () => {
         const mType = recorder?.mimeType ?? 'video/webm';
         const blob = new Blob(chunks, { type: mType });
         chunks = [];
+        bufferedBytes = 0;
+        bufferLimitReached = false;
         isRecording = false;
         config.onRecordingComplete?.(blob);
         if (resolveBlob) {
@@ -134,6 +163,8 @@ export function createCameraRecorder(
       isRecording = false;
       recorder = null;
       chunks = [];
+      bufferedBytes = 0;
+      bufferLimitReached = false;
       resolveBlob = null;
     },
   };

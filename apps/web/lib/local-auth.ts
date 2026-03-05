@@ -2,6 +2,7 @@ import { getDb } from './database';
 import { getUserById, getUserByEmail, createUser, seedDefaultUser } from './db';
 
 const LOCAL_USER_ID = 'local-user';
+let cachedLocalUser: LocalUser | null = null;
 
 export interface LocalUser {
   id: string;
@@ -15,6 +16,10 @@ export interface LocalUser {
  * user. We auto-create them on first access.
  */
 export function getLocalUser(): LocalUser {
+  if (cachedLocalUser) {
+    return cachedLocalUser;
+  }
+
   const db = getDb();
   seedDefaultUser(db);
   const user = getUserById(db, LOCAL_USER_ID);
@@ -25,19 +30,21 @@ export function getLocalUser(): LocalUser {
       email: 'user@myworkouts.local',
       display_name: 'Local User',
     });
-    return {
+    cachedLocalUser = {
       id,
       email: 'user@myworkouts.local',
       display_name: 'Local User',
       avatar_url: null,
     };
+    return cachedLocalUser;
   }
-  return {
+  cachedLocalUser = {
     id: user.id,
     email: user.email,
     display_name: user.display_name,
     avatar_url: user.avatar_url,
   };
+  return cachedLocalUser;
 }
 
 /**
@@ -64,13 +71,16 @@ export function localSignUp(
     seedDefaultUser(db);
     user = getUserById(db, LOCAL_USER_ID)!;
   }
+  const resolvedUser = {
+    id: user.id,
+    email: user.email,
+    display_name: displayName ?? user.display_name,
+    avatar_url: user.avatar_url,
+  };
+  cachedLocalUser = resolvedUser;
+
   return {
-    user: {
-      id: user.id,
-      email: user.email,
-      display_name: displayName ?? user.display_name,
-      avatar_url: user.avatar_url,
-    },
+    user: resolvedUser,
     error: null,
   };
 }
